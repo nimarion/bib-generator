@@ -1,5 +1,8 @@
 from PIL import ImageFont, ImageDraw, Image
 import argparse
+import img2pdf
+import os
+import uuid
 
 def main(txt, output_file, header_file, footer_file, font_file, header_offset = 0):
     # A5 size
@@ -44,9 +47,17 @@ def main(txt, output_file, header_file, footer_file, font_file, header_offset = 
 
     image.paste(header, (0, header_offset))
     image.paste(footer, (0, image.size[1] - footer.size[1]))
-    
-    image.save(output_file)
- 
+
+    if output_file.endswith('.pdf'):
+        a5 = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
+        layout = img2pdf.get_layout_fun(a5)
+        tmp_file = str(uuid.uuid4()) + '.png'
+        image.save(tmp_file)
+        with open(output_file, 'wb') as f:
+            f.write(img2pdf.convert([tmp_file], layout_fun=layout))
+        os.remove(tmp_file)
+    else:
+        image.save(output_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
