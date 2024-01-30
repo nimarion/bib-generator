@@ -1,14 +1,12 @@
 from PIL import ImageFont, ImageDraw, Image
 import argparse
-import img2pdf
-import os
-import uuid
+import io
 
-def main(txt, output_file, header_file, footer_file, font_file, header_offset = 0):
+def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
     # A5 size
     image = Image.new("RGB", (3508, 2480), "white") 
-    header = Image.open(header_file)
-    footer = Image.open(footer_file)
+    header = Image.open("header/" + header_file)
+    footer = Image.open("footer/" + footer_file)
     draw = ImageDraw.Draw(image)
     fontsize = 1  # starting font size
 
@@ -48,16 +46,17 @@ def main(txt, output_file, header_file, footer_file, font_file, header_offset = 
     image.paste(header, (0, header_offset))
     image.paste(footer, (0, image.size[1] - footer.size[1]))
 
-    if output_file.endswith('.pdf'):
-        a5 = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
-        layout = img2pdf.get_layout_fun(a5)
-        tmp_file = str(uuid.uuid4()) + '.png'
-        image.save(tmp_file)
-        with open(output_file, 'wb') as f:
-            f.write(img2pdf.convert([tmp_file], layout_fun=layout))
-        os.remove(tmp_file)
-    else:
-        image.save(output_file)
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    img_byte_arr = img_byte_arr.getvalue()
+    return img_byte_arr
+
+    
+
+def main(txt, output_file, header_file, footer_file, font_file, header_offset = 0):
+    bytes = generate_image(txt, header_file, footer_file, font_file, header_offset)
+    image = Image.open(io.BytesIO(bytes))
+    image.save(output_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
