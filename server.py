@@ -13,7 +13,7 @@ app.mount("/footer", StaticFiles(directory="footer"), name="footer")
 
 def headers():
     header = []
-    for (dirpath, dirnames, filenames) in walk("header"):
+    for (_, _, filenames) in walk("header"):
         filenames = [f for f in filenames if f.endswith(
             '.png') or f.endswith('.jpg')]
         header.extend(filenames)
@@ -23,12 +23,22 @@ def headers():
 
 def footers():
     footer = []
-    for (dirpath, dirnames, filenames) in walk("footer"):
+    for (_, _, filenames) in walk("footer"):
         filenames = [f for f in filenames if f.endswith(
             '.png') or f.endswith('.jpg')]
         footer.extend(filenames)
         break
     return footer
+
+
+def fonts():
+    fonts = []
+    for (_, _, filenames) in walk("fonts"):
+        filenames = [f for f in filenames if f.endswith(
+            '.ttf')]
+        fonts.extend(filenames)
+        break
+    return fonts
 
 
 @app.get("/",  responses={
@@ -40,15 +50,17 @@ def generate_bib(
     text: str,
     header: str,
     footer: str,
+    font: str,
     header_offset: Optional[int] = 60,
 ):
-    # check if header and footer are valid
     if header not in headers():
         return {"error": "Header not found"}
     if footer not in footers():
         return {"error": "Footer not found"}
+    if font not in fonts():
+        return {"error": "Font not found"}
     image = generate_image(text, header, footer,
-                           "agency_fb.ttf", header_offset)
+                           font, header_offset)
     return Response(content=image, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
 
 
@@ -56,7 +68,10 @@ def generate_bib(
 def get_headers():
     return headers()
 
-
 @app.get("/footers")
 def get_footers():
     return footers()
+
+@app.get("/fonts")
+def get_fonts():
+    return fonts()
