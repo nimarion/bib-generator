@@ -5,8 +5,8 @@ import io
 def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
     # A5 size
     image = Image.new("RGB", (3508, 2480), "white") 
-    header = Image.open("header/" + header_file)
-    footer = Image.open("footer/" + footer_file)
+    header = Image.open(header_file)
+    footer = Image.open(footer_file)
     draw = ImageDraw.Draw(image)
     fontsize = 1  # starting font size
 
