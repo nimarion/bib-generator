@@ -30,6 +30,12 @@ if __name__ == "__main__":
         firstname = row['firstname'] 
         lastname = row['lastname']
         text = lastname.upper()
+
+        # check if lastname is duplicated in the csv file preprend the firstname initial
+        if df[df['lastname'] == lastname].shape[0] > 1:
+            text = firstname[0].upper() + ". " + lastname.upper()
+            print("Duplicated lastname", lastname, "prepending firstname initial", firstname[0])
+        
         header_file = row['header']
         output_file = output_folder + "/" + lastname + "_" + firstname + ".png"
         print("Generating bib for", firstname, lastname, "with header", header_file)
