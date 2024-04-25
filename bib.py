@@ -3,6 +3,7 @@ import argparse
 import io
 
 def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
+    print("Generating image", txt, header_file, footer_file, font_file, header_offset)
     # A5 size
     image = Image.new("RGB", (3508, 2480), "white") 
     header = Image.open(header_file)

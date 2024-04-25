@@ -27,8 +27,9 @@ if __name__ == "__main__":
     df = pd.read_csv(data_file, sep=args.seperator)
 
     for index, row in df.iterrows():
-        firstname = row['firstname'] 
-        lastname = row['lastname']
+        
+        firstname = str(row['firstname'])
+        lastname = str(row['lastname'])
         text = lastname.upper()
 
         # check if lastname is duplicated in the csv file preprend the firstname initial
@@ -38,5 +39,4 @@ if __name__ == "__main__":
         
         header_file = row['header']
         output_file = output_folder + "/" + lastname + "_" + firstname + ".png"
-        print("Generating bib for", firstname, lastname, "with header", header_file)
         bib_generator(text, output_file, header_file, footer_file, font_file, header_offset)
