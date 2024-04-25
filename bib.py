@@ -14,7 +14,8 @@ def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
     W, H = image.size
 
     # portion of image width you want text width to be
-    blank = Image.new('RGB',(W - 50, 1100))
+    // TODO: config
+    blank = Image.new('RGB',(W - 25, 1400))
 
 
     font = ImageFont.truetype(font_file, fontsize)
