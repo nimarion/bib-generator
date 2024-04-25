@@ -1,19 +1,23 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
 from typing import Optional
 from os import walk
 from fastapi.staticfiles import StaticFiles
 from bib import generate_image
 
+header_folder = "header"
+footer_folder = "footer"
+font_folder = "font"
+
 app = FastAPI(title="DLV", docs_url="/swagger",
               openapi_url="/swagger-json", redoc_url=None)
 
-app.mount("/header", StaticFiles(directory="header"), name="header")
-app.mount("/footer", StaticFiles(directory="footer"), name="footer")
+app.mount("/" + header_folder, StaticFiles(directory="header"), name="header")
+app.mount("/" + footer_folder, StaticFiles(directory="footer"), name="footer")
 
 
 def headers():
     header = []
-    for (_, _, filenames) in walk("header"):
+    for (_, _, filenames) in walk(header_folder):
         filenames = [f for f in filenames if f.endswith(
             '.png') or f.endswith('.jpg')]
         header.extend(filenames)
@@ -23,7 +27,7 @@ def headers():
 
 def footers():
     footer = []
-    for (_, _, filenames) in walk("footer"):
+    for (_, _, filenames) in walk(footer_folder):
         filenames = [f for f in filenames if f.endswith(
             '.png') or f.endswith('.jpg')]
         footer.extend(filenames)
@@ -33,7 +37,7 @@ def footers():
 
 def fonts():
     fonts = []
-    for (_, _, filenames) in walk("fonts"):
+    for (_, _, filenames) in walk(font_folder):
         filenames = [f for f in filenames if f.endswith(
             '.ttf')]
         fonts.extend(filenames)
@@ -53,14 +57,17 @@ def generate_bib(
     font: str,
     header_offset: Optional[int] = 60,
 ):
+    print("hi")
     if header not in headers():
-        return {"error": "Header not found"}
+        raise HTTPException(status_code=404, detail="Header not found")
     if footer not in footers():
-        return {"error": "Footer not found"}
+        raise HTTPException(status_code=404, detail="Footer not found")
+    print(font)
     if font not in fonts():
-        return {"error": "Font not found"}
-    image = generate_image(text, header, footer,
-                           font, header_offset)
+        raise HTTPException(status_code=404, detail="Font not found")
+    print("hi")
+    image = generate_image(text, header_folder + "/" + header, footer_folder + "/" + footer,
+                           font_folder + "/" + font, header_offset)
     return Response(content=image, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
 
 
