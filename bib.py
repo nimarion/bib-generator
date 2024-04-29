@@ -2,8 +2,7 @@ from PIL import ImageFont, ImageDraw, Image
 import argparse
 import io
 
-def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
-    print("Generating image", txt, header_file, footer_file, font_file, header_offset)
+def generate_image(txt, header_file, footer_file, font_file):
     # A5 size
     image = Image.new("RGB", (3508, 2480), "white") 
     header = Image.open(header_file)
@@ -14,8 +13,8 @@ def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
     W, H = image.size
 
     # portion of image width you want text width to be
-    // TODO: config
-    blank = Image.new('RGB',(W - 25, 1400))
+    blank_height = image.size[1] - header.size[1] - footer.size[1];
+    blank = Image.new('RGB',(W - 25, blank_height), "white")
 
 
     font = ImageFont.truetype(font_file, fontsize)
@@ -37,15 +36,13 @@ def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
 
     #print('Fontsize:',fontsize)
     draw.text(((W-w)/2,(H-h)/2), txt, font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
-    #draw.rectangle([0, 0, blank.size[0] - 1, blank.size[1] - 1], outline="red", width=10)
+    # draw.rectangle([0, 0, blank.size[0] - 1, blank.size[1] - 1], outline="red", width=10)
 
     #draw.text((2100, 442), "150", font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
 
     # draw text on top right of text area
 
-    #draw.text((((W-w)/2) +w, (H-h)/2), "15", font=font, fill="black", align="center", stroke_width=3, stroke_fill="black")
-
-    image.paste(header, (0, header_offset))
+    image.paste(header, (0, 0))
     image.paste(footer, (0, image.size[1] - footer.size[1]))
 
     img_byte_arr = io.BytesIO()
@@ -55,8 +52,8 @@ def generate_image(txt, header_file, footer_file, font_file, header_offset = 0):
 
     
 
-def main(txt, output_file, header_file, footer_file, font_file, header_offset = 0):
-    bytes = generate_image(txt, header_file, footer_file, font_file, header_offset)
+def main(txt, output_file, header_file, footer_file, font_file):
+    bytes = generate_image(txt, header_file, footer_file, font_file)
     image = Image.open(io.BytesIO(bytes))
     image.save(output_file)
 
@@ -68,7 +65,6 @@ if __name__ == "__main__":
     parser.add_argument('--header', '-he', help='Header file name', required=True)
     parser.add_argument('--footer', '-f', help='Footer file name', required=True)
     parser.add_argument('--font', '-F', help='Font file name', required=True)
-    parser.add_argument('--header-offset', '-ho', help='Header offset', default=0, required=False, type=int)
 
     args = parser.parse_args()
 
@@ -77,9 +73,8 @@ if __name__ == "__main__":
     font_file = args.font
     txt = args.text
     output_file = args.output
-    header_offset = args.header_offset
 
-    main(txt, output_file, header_file, footer_file, font_file, header_offset)
+    main(txt, output_file, header_file, footer_file, font_file)
 
     
 

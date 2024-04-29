@@ -13,8 +13,6 @@ if __name__ == "__main__":
     argparse.add_argument('--font', '-F', help='Font file name', required=True)
     argparse.add_argument(
         '--footer', '-he', help='Footer file name', default="rehlingen.png", required=False)
-    argparse.add_argument(
-        '--header-offset', '-ho', help='Header offset', default=0, required=False, type=int)
 
     args = argparse.parse_args()
 
@@ -22,9 +20,10 @@ if __name__ == "__main__":
     output_folder = args.output
     font_file = args.font
     footer_file = args.footer
-    header_offset = args.header_offset
 
     df = pd.read_csv(data_file, sep=args.seperator)
+
+    df = df.drop_duplicates()
 
     for index, row in df.iterrows():
         
@@ -39,4 +38,5 @@ if __name__ == "__main__":
         
         header_file = row['header']
         output_file = output_folder + "/" + lastname + "_" + firstname + ".png"
-        bib_generator(text, output_file, header_file, footer_file, font_file, header_offset)
+        print("Generating image", text, header_file, footer_file, font_file)
+        bib_generator(text, output_file, header_file, footer_file, font_file)
