@@ -67,7 +67,7 @@ def generate_bib(
         raise HTTPException(status_code=404, detail="Font not found")
     print("hi")
     image = generate_image(text, header_folder + "/" + header, footer_folder + "/" + footer,
-                           font_folder + "/" + font, header_offset)
+                           font_folder + "/" + font)
     return Response(content=image, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
 
 

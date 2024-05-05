@@ -29,7 +29,8 @@ if __name__ == "__main__":
         
         firstname = str(row['firstname'])
         lastname = str(row['lastname'])
-        text = lastname.upper()
+        text = lastname.replace('ß', 'ẞ').upper()
+        text = text.replace('ẞ'.upper(), 'ß')
 
         # check if lastname is duplicated in the csv file preprend the firstname initial
         if df[df['lastname'] == lastname].shape[0] > 1:
