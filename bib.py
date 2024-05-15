@@ -35,8 +35,16 @@ def generate_image(txt, header_file, footer_file, font_file):
     _, _, w, h = draw.textbbox((0, 0), txt, font=font)
 
     #print('Fontsize:',fontsize)
-    draw.text(((W-w)/2,(H-h)/2), txt, font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
+    
+    #draw text between header and footer
+    x = (W - w) // 2
+    y = header.size[1] + ((blank_height - h) // 2)
+    draw.text((x, y), txt, font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
+
     # draw.rectangle([0, 0, blank.size[0] - 1, blank.size[1] - 1], outline="red", width=10)
+
+    # draw rectanble around text area with blank size
+    # draw.rectangle([0, header.size[1], W - 1, H - footer.size[1] - 1], outline="red", width=10)
 
     #draw.text((2100, 442), "150", font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
 
