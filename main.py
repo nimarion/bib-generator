@@ -1,6 +1,8 @@
 import argparse
 import pandas as pd
-from bib import main as bib_generator
+from bib import generate_image
+from PIL import Image
+import io
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser(
@@ -13,6 +15,8 @@ if __name__ == "__main__":
     argparse.add_argument('--font', '-F', help='Font file name', required=True)
     argparse.add_argument(
         '--footer', '-he', help='Footer file name', default="rehlingen.png", required=False)
+    argparse.add_argument(
+        '--create-duplicate', '-D', help='Create the same image two times with suffix', default=False, required=False, action='store_true')
 
     args = argparse.parse_args()
 
@@ -20,10 +24,9 @@ if __name__ == "__main__":
     output_folder = args.output
     font_file = args.font
     footer_file = args.footer
+    create_duplicate = args.create_duplicate
 
     df = pd.read_csv(data_file, sep=args.seperator)
-
-    df = df.drop_duplicates()
 
     for index, row in df.iterrows():
         
@@ -40,4 +43,11 @@ if __name__ == "__main__":
         header_file = row['header']
         output_file = output_folder + "/" + lastname + "_" + firstname + ".png"
         print("Generating image", text, header_file, footer_file, font_file)
-        bib_generator(text, output_file, header_file, footer_file, font_file)
+        bytes = generate_image(text, header_file, footer_file, font_file)
+        image=Image.open(io.BytesIO(bytes))
+        if(create_duplicate == True):
+            image.save(output_file.replace(".png", "_1.png"))   
+            image.save(output_file.replace(".png", "_2.png"))
+        else:
+            image.save(output_file)
+

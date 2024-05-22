@@ -1,5 +1,4 @@
 from fastapi import FastAPI, Response, HTTPException
-from typing import Optional
 from os import walk
 from fastapi.staticfiles import StaticFiles
 from bib import generate_image
@@ -13,6 +12,7 @@ app = FastAPI(title="DLV", docs_url="/swagger",
 
 app.mount("/" + header_folder, StaticFiles(directory="header"), name="header")
 app.mount("/" + footer_folder, StaticFiles(directory="footer"), name="footer")
+app.mount("/" + font_folder, StaticFiles(directory="font"), name="font")
 
 
 def headers():
@@ -55,17 +55,13 @@ def generate_bib(
     header: str,
     footer: str,
     font: str,
-    header_offset: Optional[int] = 60,
 ):
-    print("hi")
     if header not in headers():
         raise HTTPException(status_code=404, detail="Header not found")
     if footer not in footers():
         raise HTTPException(status_code=404, detail="Footer not found")
-    print(font)
     if font not in fonts():
         raise HTTPException(status_code=404, detail="Font not found")
-    print("hi")
     image = generate_image(text, header_folder + "/" + header, footer_folder + "/" + footer,
                            font_folder + "/" + font)
     return Response(content=image, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
