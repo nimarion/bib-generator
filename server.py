@@ -2,6 +2,7 @@ from fastapi import FastAPI, Response, HTTPException
 from os import walk
 from fastapi.staticfiles import StaticFiles
 from bib import generate_image
+import img2pdf
 
 header_folder = "header"
 footer_folder = "footer"
@@ -55,6 +56,7 @@ def generate_bib(
     header: str,
     footer: str,
     font: str,
+    pdf: bool = False
 ):
     if header not in headers():
         raise HTTPException(status_code=404, detail="Header not found")
@@ -62,9 +64,16 @@ def generate_bib(
         raise HTTPException(status_code=404, detail="Footer not found")
     if font not in fonts():
         raise HTTPException(status_code=404, detail="Font not found")
-    image = generate_image(text, header_folder + "/" + header, footer_folder + "/" + footer,
+
+    image_bytes = generate_image(text, header_folder + "/" + header, footer_folder + "/" + footer,
                            font_folder + "/" + font)
-    return Response(content=image, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
+    if pdf:
+        letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
+        layout = img2pdf.get_layout_fun(letter)
+        pdf_bytes = img2pdf.convert([image_bytes], layout_fun=layout)
+        return Response(content=pdf_bytes, media_type="application/pdf", headers={"Content-Disposition": "filename=" + text + ".pdf"})
+
+    return Response(content=image_bytes, media_type="image/png", headers={"Content-Disposition": "filename=" + text + ".png"})
 
 
 @app.get("/headers")
