@@ -27,7 +27,7 @@ if __name__ == "__main__":
     font_file = args.font
     footer_file = args.footer
     create_duplicate = args.create_duplicate
-    create_pdf = args.pdf
+    create_pdf = args.create_pdf
 
     df = pd.read_csv(data_file, sep=args.seperator)
 
