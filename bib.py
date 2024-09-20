@@ -8,7 +8,7 @@ def contains_umlaut(s):
     pattern = r'[äöüëïíš]'
     return bool(re.search(pattern, s))
 
-def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_y=60):
+def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_y=0):
     # A5 size
     image = Image.new("RGB", (3508, 2480), "white")
     header = Image.open(header_file)
