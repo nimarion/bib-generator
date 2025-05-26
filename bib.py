@@ -8,11 +8,11 @@ def contains_umlaut(s):
     pattern = r'[äöüëïíš]'
     return bool(re.search(pattern, s))
 
-def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_y=0):
+def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_y=-200):
     # A5 size
-    image = Image.new("RGB", (3508, 2480), "white")
-    header = Image.open(header_file)
-    footer = Image.open(footer_file)
+    image = Image.new("RGBA", (3508, 2480), "white")
+    header = Image.open(header_file).convert("RGBA")
+    footer = Image.open(footer_file).convert("RGBA")
     draw = ImageDraw.Draw(image)
     fontsize = 1  # starting font size
 
@@ -20,7 +20,7 @@ def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_
 
     # portion of image width you want text width to be
     blank_height = image.size[1] - header.size[1] - footer.size[1];
-    blank = Image.new('RGB', (W - 25, blank_height), "white")
+    blank = Image.new('RGBA', (W - 25, blank_height), "white")
 
     font = ImageFont.truetype(font_file, fontsize)
 
@@ -33,7 +33,7 @@ def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_
         font = ImageFont.truetype(font_file, fontsize)
 
     # optionally de-increment to be sure it is less than criteria
-    fontsize -= 0
+    fontsize += 0
     font = ImageFont.truetype(font_file, fontsize)
    
     #if(contains_umlaut(txt)):
@@ -61,6 +61,10 @@ def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_
 
     image.paste(header, (0, 0))
     image.paste(footer, (0, image.size[1] - footer.size[1]))
+    
+    white_bg = Image.new("RGBA", image.size, "white")
+    white_bg.paste(image, (0, 0), image)
+    image = white_bg.convert("RGB")
 
     img_byte_arr=io.BytesIO()
     image.save(img_byte_arr, format='PNG')
