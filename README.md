@@ -4,7 +4,7 @@ Automatically generate DIN A5 (148 x 210) bibs for sports events. Text size is a
 
 ## Using csv file
 
-- [Example file](data.dsv)
+- [Example file](example/data.dsv)
 
 
 
