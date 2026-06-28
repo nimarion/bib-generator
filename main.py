@@ -21,7 +21,9 @@ def generate_single_bib(
     create_duplicate: bool,
     create_pdf: bool,
     need_bytes: bool,
-    is_unique: bool
+    is_unique: bool,
+    width: int,
+    height: int
 ) -> tuple[int, bytes | None]:
     """
     Worker function executed in parallel to process a single bib row.
@@ -53,7 +55,9 @@ def generate_single_bib(
         margin=margin,
         text_color=text_color,
         stroke_color=stroke_color,
-        stroke_width=stroke_width
+        stroke_width=stroke_width,
+        width=width,
+        height=height
     )
 
     # Always save high-quality optimized PNG(s)
@@ -71,7 +75,10 @@ def generate_single_bib(
         img_bytes = img_byte_arr.getvalue()
         
         if create_pdf:
-            letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
+            # Sizing for pdf dimensions dynamically scaled
+            pdf_w_pt = img2pdf.mm_to_pt(int(width * (210 / 3508))) if width else img2pdf.mm_to_pt(210)
+            pdf_h_pt = img2pdf.mm_to_pt(int(height * (148 / 2480))) if height else img2pdf.mm_to_pt(148)
+            letter = (pdf_w_pt, pdf_h_pt)
             layout = img2pdf.get_layout_fun(letter)
             pdf_path = output_file.with_suffix(".pdf")
             with open(pdf_path, "wb") as f:
@@ -137,6 +144,19 @@ def cli_main() -> None:
         '--stroke-width', type=int,
         help='Thickness of the text outline/stroke in pixels', default=1, required=False)
 
+    # Custom canvas sizing options
+    parser.add_argument(
+        '--size', type=str,
+        help='Canvas size preset (A4, A5, A6, letter)', default="A5", choices=list(PRESETS.keys()), required=False)
+    
+    parser.add_argument(
+        '--width', type=int,
+        help='Custom canvas width in pixels (overrides --size preset)', required=False)
+    
+    parser.add_argument(
+        '--height', type=int,
+        help='Custom canvas height in pixels (overrides --size preset)', required=False)
+
     args = parser.parse_args()
 
     # Pre-execution Validation
@@ -156,6 +176,12 @@ def cli_main() -> None:
     if not footer_path.is_file():
         print(f"Error: Footer image file '{footer_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
+
+    # Determine canvas dimensions from preset or custom values
+    if args.width and args.height:
+        canvas_w, canvas_h = args.width, args.height
+    else:
+        canvas_w, canvas_h = PRESETS[args.size]
 
     # Zero-Config file type auto-detection (CSV vs Excel)
     is_excel = data_path.suffix.lower() in ('.xlsx', '.xls')
@@ -219,7 +245,9 @@ def cli_main() -> None:
             args.create_duplicate,
             args.create_pdf,
             args.combined_pdf,  # We only need bytes in memory if combined_pdf is True
-            is_unique
+            is_unique,
+            canvas_w,
+            canvas_h
         ))
 
     all_bib_bytes_map = {}
@@ -247,7 +275,10 @@ def cli_main() -> None:
             else:
                 ordered_bytes.append(img_bytes)
 
-        letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
+        # Scale layout dimensions based on actual width and height
+        pdf_w_pt = img2pdf.mm_to_pt(int(canvas_w * (210 / 3508))) if canvas_w else img2pdf.mm_to_pt(210)
+        pdf_h_pt = img2pdf.mm_to_pt(int(canvas_h * (148 / 2480))) if canvas_h else img2pdf.mm_to_pt(148)
+        letter = (pdf_w_pt, pdf_h_pt)
         layout = img2pdf.get_layout_fun(letter)
         combined_path = output_folder / "combined_bibs.pdf"
         

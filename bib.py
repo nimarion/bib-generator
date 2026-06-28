@@ -2,6 +2,14 @@ from PIL import ImageFont, ImageDraw, Image
 import argparse
 import pathlib
 
+# Standard canvas presets (landscape orientation at 300 DPI)
+PRESETS = {
+    "A4": (4960, 3508),
+    "A5": (3508, 2480),
+    "A6": (2480, 1748),
+    "letter": (3300, 2550),
+}
+
 def generate_image(
     txt: str,
     header_file: str,
@@ -12,36 +20,41 @@ def generate_image(
     margin: int = 175,
     text_color: str = "black",
     stroke_color: str = "black",
-    stroke_width: int = 1
+    stroke_width: int = 1,
+    width: int = 3508,
+    height: int = 2480
 ) -> Image.Image:
     """
-    Generates a bib image (A5 size, high-res 3508x2480) with a header, footer,
-    and centered text scaled dynamically using binary search to fit the available space.
-    
-    Args:
-        txt: Text to be printed on the bib.
-        header_file: Path to the header image file.
-        footer_file: Path to the footer image file.
-        font_file: Path to the TTF/OTF font file.
-        offset_x: Horizontal text draw offset in pixels.
-        offset_y: Vertical text draw offset in pixels.
-        margin: Horizontal margin from left/right canvas edges in pixels.
-        text_color: Color of the main text fill.
-        stroke_color: Color of the text outline/stroke.
-        stroke_width: Thickness of the text outline/stroke in pixels.
+    Generates a bib image with a header, footer, and centered text scaled dynamically
+    using binary search to fit the available space. Supports custom width/height canvas sizes,
+    and automatically rescales headers and footers proportionally.
     """
-    # A5 size at 300 DPI is approximately 3508 x 2480
-    image = Image.new("RGBA", (3508, 2480), "white")
+    # Create the custom-sized blank canvas
+    image = Image.new("RGBA", (width, height), "white")
     
-    header = Image.open(header_file).convert("RGBA")
-    footer = Image.open(footer_file).convert("RGBA")
-    draw = ImageDraw.Draw(image)
+    # Load and auto-rescale header to match canvas width proportionally
+    header_raw = Image.open(header_file).convert("RGBA")
+    h_w, h_h = header_raw.size
+    new_h_height = int(h_h * (width / h_w))
+    header = header_raw.resize((width, new_h_height), Image.Resampling.LANCZOS)
 
+    # Load and auto-rescale footer to match canvas width proportionally
+    footer_raw = Image.open(footer_file).convert("RGBA")
+    f_w, f_h = footer_raw.size
+    new_f_height = int(f_h * (width / f_w))
+    footer = footer_raw.resize((width, new_f_height), Image.Resampling.LANCZOS)
+
+    draw = ImageDraw.Draw(image)
     W, H = image.size
 
     # The blank area height available for text between the header and footer
     blank_height = H - header.size[1] - footer.size[1]
     blank_width = W - (2 * margin)  # Apply symmetrical horizontal margins
+
+    if blank_height <= 0 or blank_width <= 0:
+        raise ValueError(
+            f"Canvas is too small for the header/footer dimensions (blank height: {blank_height}px, blank width: {blank_width}px)."
+        )
 
     # Optimize font sizing using Binary Search to find the maximum fitting size.
     # Set the search ceiling dynamically based on the image size to prevent artificial caps.
@@ -104,7 +117,9 @@ def main(
     margin: int = 175,
     text_color: str = "black",
     stroke_color: str = "black",
-    stroke_width: int = 1
+    stroke_width: int = 1,
+    width: int = 3508,
+    height: int = 2480
 ) -> None:        
     import sys
     
@@ -131,7 +146,9 @@ def main(
         margin=margin,
         text_color=text_color,
         stroke_color=stroke_color,
-        stroke_width=stroke_width
+        stroke_width=stroke_width,
+        width=width,
+        height=height
     )
     output_path = pathlib.Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -151,8 +168,19 @@ def cli_main() -> None:
     parser.add_argument('--text-color', type=str, help='Text fill color', default="black")
     parser.add_argument('--stroke-color', type=str, help='Text stroke/outline color', default="black")
     parser.add_argument('--stroke-width', type=int, help='Text stroke/outline thickness', default=1)
+    
+    # Custom size options
+    parser.add_argument('--size', type=str, help='Canvas preset (A4, A5, A6, letter)', default="A5", choices=list(PRESETS.keys()))
+    parser.add_argument('--width', type=int, help='Custom canvas width in pixels')
+    parser.add_argument('--height', type=int, help='Custom canvas height in pixels')
 
     args = parser.parse_args()
+
+    # Determine canvas dimensions from preset or custom values
+    if args.width and args.height:
+        w, h = args.width, args.height
+    else:
+        w, h = PRESETS[args.size]
 
     main(
         txt=args.text,
@@ -163,7 +191,9 @@ def cli_main() -> None:
         margin=args.margin,
         text_color=args.text_color,
         stroke_color=args.stroke_color,
-        stroke_width=args.stroke_width
+        stroke_width=args.stroke_width,
+        width=w,
+        height=h
     )
 
 

@@ -5,7 +5,7 @@ import pandas as pd
 import subprocess
 import sys
 from PIL import Image
-from bib import generate_image
+from bib import generate_image, PRESETS
 
 class TestBibGenerator(unittest.TestCase):
     def setUp(self):
@@ -135,7 +135,6 @@ class TestBibGenerator(unittest.TestCase):
             "lastname": ["Johnson", "Williams"],
             "header": [self.header_file, self.header_file]
         })
-        # Save as Excel using openpyxl (which is guaranteed to be in requirements)
         df.to_excel(mock_xlsx, index=False)
 
         # Run main.py via subprocess to test full Excel and Parallel execution
@@ -151,10 +150,32 @@ class TestBibGenerator(unittest.TestCase):
         result = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, msg=f"Excel Parallel CLI failed with error:\n{result.stderr}")
 
-        # Check files were created in parallel
         self.assertTrue((self.output_dir / "Johnson_Bob.png").is_file())
         self.assertTrue((self.output_dir / "Williams_Alice.png").is_file())
         self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
+
+    def test_universal_canvas_sizing_presets(self):
+        # Test A4 preset (which is 4960 x 3508)
+        img_a4 = generate_image(
+            txt="A4 RUNNER",
+            header_file=self.header_file,
+            footer_file=self.footer_file,
+            font_file=self.font_file,
+            width=PRESETS["A4"][0],
+            height=PRESETS["A4"][1]
+        )
+        self.assertEqual(img_a4.size, (4960, 3508))
+
+        # Test custom resolution (e.g. 2000 x 1000)
+        img_custom = generate_image(
+            txt="CUSTOM SIZE",
+            header_file=self.header_file,
+            footer_file=self.footer_file,
+            font_file=self.font_file,
+            width=2000,
+            height=1000
+        )
+        self.assertEqual(img_custom.size, (2000, 1000))
 
 if __name__ == "__main__":
     unittest.main()
