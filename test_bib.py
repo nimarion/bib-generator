@@ -127,6 +127,34 @@ class TestBibGenerator(unittest.TestCase):
         self.assertTrue((self.output_dir / "Smith_Jane.png").is_file())
         self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
 
+    def test_cli_execution_with_csv_assets_in_data_file(self):
+        # Create a mock CSV file where both header and footer are provided as spreadsheet columns
+        mock_csv = self.output_dir / "test_data.csv"
+        df = pd.DataFrame({
+            "firstname": ["John", "Jane"],
+            "lastname": ["Doe", "Smith"],
+            "header": [self.header_file, self.header_file],
+            "footer": [self.footer_file, self.footer_file]
+        })
+        df.to_csv(mock_csv, index=False, sep=";")
+
+        # Run main.py WITHOUT --footer or --header CLI parameters
+        cmd = [
+            sys.executable, "main.py",
+            "--data", str(mock_csv),
+            "--output", str(self.output_dir),
+            "--font", self.font_file,
+            "--separator", ";",
+            "--combined-pdf"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, msg=f"CLI with inline assets failed:\n{result.stderr}")
+
+        self.assertTrue((self.output_dir / "Doe_John.png").is_file())
+        self.assertTrue((self.output_dir / "Smith_Jane.png").is_file())
+        self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
+
     def test_cli_execution_with_excel_and_multiprocessing(self):
         # Create a mock Excel file in our temp folder
         mock_xlsx = self.output_dir / "test_data.xlsx"
@@ -176,6 +204,47 @@ class TestBibGenerator(unittest.TestCase):
             height=1000
         )
         self.assertEqual(img_custom.size, (2000, 1000))
+
+    def test_sequential_generation_and_duplex_printing(self):
+        # Run main.py with --sequence "1-3" and --back-side footer
+        cmd = [
+            sys.executable, "main.py",
+            "--sequence", "1-3",
+            "--header", self.header_file,
+            "--footer", self.footer_file,
+            "--font", self.font_file,
+            "--output", str(self.output_dir),
+            "--combined-pdf",
+            "--create-pdf",
+            "--back-side", self.footer_file # Use footer image as mock back-side
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, msg=f"CLI with Sequence & Duplex failed:\n{result.stderr}")
+
+        # Check sequential files are created without trailing underscores
+        self.assertTrue((self.output_dir / "1.png").is_file())
+        self.assertTrue((self.output_dir / "2.png").is_file())
+        self.assertTrue((self.output_dir / "3.png").is_file())
+
+        # Check that individual duplex PDFs are generated and contain exactly 2 pages (Front and Back)
+        pdf_1_path = self.output_dir / "1.pdf"
+        self.assertTrue(pdf_1_path.is_file())
+        
+        # Count pages using standard PDF structure binary search (zero dependencies)
+        with open(pdf_1_path, "rb") as f:
+            content = f.read()
+            page_count = content.count(b"/Type /Page") - content.count(b"/Type /Pages")
+            self.assertEqual(page_count, 2, "Individual duplex PDF must contain exactly 2 pages.")
+
+        # Check that combined PDF has exactly 6 pages (3 front, 3 back, alternating)
+        combined_pdf_path = self.output_dir / "combined_bibs.pdf"
+        self.assertTrue(combined_pdf_path.is_file())
+        
+        with open(combined_pdf_path, "rb") as f:
+            content = f.read()
+            page_count = content.count(b"/Type /Page") - content.count(b"/Type /Pages")
+            self.assertEqual(page_count, 6, "Combined duplex PDF must contain exactly 6 pages (3 front, 3 back).")
 
 if __name__ == "__main__":
     unittest.main()

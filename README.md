@@ -75,7 +75,7 @@ python3 main.py \
 | `--data` | `-d` | Path to CSV or Excel (`.xlsx`, `.xls`) registration file | *Required* |
 | `--output` | `-o` | Output directory path | *Required* |
 | `--font` | `-F` | Path to `.ttf` or `.otf` font file | *Required* |
-| `--footer` | `-f` / `-he` | Path to footer image | `"rehlingen.png"` |
+| `--footer` | `-f` / `-he` | Path to footer image | *Required* |
 | `--separator` | `-s` | CSV separator character (if reading CSV) | `","` |
 | `--create-duplicate` | `-D` | Creates the same image twice (with suffix or double-page PDF) | `False` |
 | `--create-pdf` | `-P` | Generate individual `.pdf` files for each runner | `False` |
