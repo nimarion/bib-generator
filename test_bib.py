@@ -39,7 +39,7 @@ class TestBibGenerator(unittest.TestCase):
         self.assertEqual(img.mode, "RGB")
 
     def test_sharp_s_handling_logic(self):
-        # Test the sharp s custom conversion logic that we have in main.py
+        # Test the sharp s custom conversion logic
         names = ["Groß", "groß", "GROß", "GROẞ"]
         for name in names:
             text = name.replace('ß', 'ẞ').upper()
@@ -94,7 +94,7 @@ class TestBibGenerator(unittest.TestCase):
         self.assertTrue(results[1][2])
         self.assertEqual(results[1][3], "ONNEN")
 
-    def test_cli_execution_with_combined_pdf_and_styling(self):
+    def test_cli_execution_with_csv_and_styling(self):
         # Create a mock CSV file in our temp folder
         mock_csv = self.output_dir / "test_data.csv"
         df = pd.DataFrame({
@@ -120,11 +120,40 @@ class TestBibGenerator(unittest.TestCase):
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, msg=f"CLI failed with error:\n{result.stderr}")
+        self.assertEqual(result.returncode, 0, msg=f"CSV CLI failed with error:\n{result.stderr}")
 
         # Check that PNGs and the combined PDF exist
         self.assertTrue((self.output_dir / "Doe_John.png").is_file())
         self.assertTrue((self.output_dir / "Smith_Jane.png").is_file())
+        self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
+
+    def test_cli_execution_with_excel_and_multiprocessing(self):
+        # Create a mock Excel file in our temp folder
+        mock_xlsx = self.output_dir / "test_data.xlsx"
+        df = pd.DataFrame({
+            "firstname": ["Bob", "Alice"],
+            "lastname": ["Johnson", "Williams"],
+            "header": [self.header_file, self.header_file]
+        })
+        # Save as Excel using openpyxl (which is guaranteed to be in requirements)
+        df.to_excel(mock_xlsx, index=False)
+
+        # Run main.py via subprocess to test full Excel and Parallel execution
+        cmd = [
+            sys.executable, "main.py",
+            "--data", str(mock_xlsx),
+            "--output", str(self.output_dir),
+            "--font", self.font_file,
+            "--footer", self.footer_file,
+            "--combined-pdf"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, msg=f"Excel Parallel CLI failed with error:\n{result.stderr}")
+
+        # Check files were created in parallel
+        self.assertTrue((self.output_dir / "Johnson_Bob.png").is_file())
+        self.assertTrue((self.output_dir / "Williams_Alice.png").is_file())
         self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
 
 if __name__ == "__main__":

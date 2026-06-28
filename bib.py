@@ -106,6 +106,23 @@ def main(
     stroke_color: str = "black",
     stroke_width: int = 1
 ) -> None:        
+    import sys
+    
+    # Robust pre-flight path validations for standalone CLI runs
+    h_path = pathlib.Path(header_file)
+    fo_path = pathlib.Path(footer_file)
+    f_path = pathlib.Path(font_file)
+    
+    if not h_path.is_file():
+        print(f"Error: Header file '{header_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+    if not fo_path.is_file():
+        print(f"Error: Footer file '{footer_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+    if not f_path.is_file():
+        print(f"Error: Font file '{font_file}' does not exist.", file=sys.stderr)
+        sys.exit(1)
+
     image = generate_image(
         txt=txt,
         header_file=header_file,
@@ -118,7 +135,9 @@ def main(
     )
     output_path = pathlib.Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output_path)
+    
+    # Save with lossless PNG optimization enabled for smaller output sizes
+    image.save(output_path, optimize=True)
 
 
 if __name__ == "__main__":

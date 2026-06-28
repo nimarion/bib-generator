@@ -1,17 +1,91 @@
 import argparse
 import pandas as pd
 import pathlib
-import io
 import sys
 import img2pdf
-from PIL import Image
-from bib import generate_image
+import concurrent.futures
+
+
+def generate_single_bib(
+    row_idx: int,
+    firstname: str,
+    lastname: str,
+    header_file: str,
+    footer_file: str,
+    font_file: str,
+    output_folder: str,
+    margin: int,
+    text_color: str,
+    stroke_color: str,
+    stroke_width: int,
+    create_duplicate: bool,
+    create_pdf: bool,
+    need_bytes: bool,
+    is_unique: bool
+) -> tuple[int, bytes | None]:
+    """
+    Worker function executed in parallel to process a single bib row.
+    Generates the high-res image, saves the PNG(s) with lossless optimization,
+    saves the individual PDF if requested, and returns bytes if needed for a combined PDF.
+    """
+    import io
+    import pathlib
+    import img2pdf
+    from bib import generate_image
+    
+    # Convert to uppercase but retain lowercase sharp s ('ß') instead of converting to 'SS'
+    text = lastname.replace('ß', 'ẞ').upper()
+    text = text.replace('ẞ'.upper(), 'ß')
+    text = text.replace('-', '-\n').replace(' ', '\n')
+
+    if not is_unique:
+        text = f"{firstname[0].upper()}. {lastname.upper()}"
+
+    output_path = pathlib.Path(output_folder)
+    output_file = output_path / f"{lastname}_{firstname}"
+    
+    # Generate the image using our core layout engine
+    image = generate_image(
+        txt=text,
+        header_file=header_file,
+        footer_file=footer_file,
+        font_file=font_file,
+        margin=margin,
+        text_color=text_color,
+        stroke_color=stroke_color,
+        stroke_width=stroke_width
+    )
+
+    # Always save high-quality optimized PNG(s)
+    if create_duplicate:
+        image.save(f"{output_file}_1.png", optimize=True)
+        image.save(f"{output_file}_2.png", optimize=True)
+    else:
+        image.save(f"{output_file}.png", optimize=True)
+
+    img_bytes = None
+    if need_bytes or create_pdf:
+        # Convert image to PNG bytes for PDF generation
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG', optimize=True)
+        img_bytes = img_byte_arr.getvalue()
+        
+        if create_pdf:
+            letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
+            layout = img2pdf.get_layout_fun(letter)
+            pdf_path = output_file.with_suffix(".pdf")
+            with open(pdf_path, "wb") as f:
+                images = [img_bytes, img_bytes] if create_duplicate else [img_bytes]
+                f.write(img2pdf.convert(images, layout_fun=layout))
+                
+    return row_idx, img_bytes
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog='Bib Generator')
     
     parser.add_argument(
-        '--data', '-d', help='CSV file name', required=True)
+        '--data', '-d', help='CSV or Excel (.xlsx/.xls) file name', required=True)
     
     # Support both spelling variants for separator to ensure backward compatibility
     parser.add_argument(
@@ -44,7 +118,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--unique-keys", "-u",
-        help="Unique keys in the CSV file, comma separated", default="lastname,firstname", required=False)
+        help="Unique keys in the data file, comma separated", default="lastname,firstname", required=False)
 
     # Advanced styling options
     parser.add_argument(
@@ -72,7 +146,7 @@ if __name__ == "__main__":
     output_folder = pathlib.Path(args.output)
 
     if not data_path.is_file():
-        print(f"Error: CSV data file '{data_path}' does not exist.", file=sys.stderr)
+        print(f"Error: Data file '{data_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
         
     if not font_path.is_file():
@@ -83,17 +157,24 @@ if __name__ == "__main__":
         print(f"Error: Footer image file '{footer_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
 
+    # Zero-Config file type auto-detection (CSV vs Excel)
+    is_excel = data_path.suffix.lower() in ('.xlsx', '.xls')
     try:
-        df = pd.read_csv(data_path, sep=args.separator)
+        if is_excel:
+            print(f"Reading registration data from Excel spreadsheet: {data_path}")
+            df = pd.read_excel(data_path)
+        else:
+            print(f"Reading registration data from Delimiter-Separated CSV: {data_path}")
+            df = pd.read_csv(data_path, sep=args.separator)
     except Exception as e:
-        print(f"Error reading CSV file: {e}", file=sys.stderr)
+        print(f"Error reading registration file: {e}", file=sys.stderr)
         sys.exit(1)
 
     # Validate required columns
     required_cols = {'firstname', 'lastname', 'header'}
     missing_cols = required_cols - set(df.columns)
     if missing_cols:
-        print(f"Error: CSV is missing required columns: {', '.join(missing_cols)}", file=sys.stderr)
+        print(f"Error: Dataset is missing required columns: {', '.join(missing_cols)}", file=sys.stderr)
         sys.exit(1)
 
     # Validate that all referenced headers exist
@@ -112,79 +193,69 @@ if __name__ == "__main__":
     output_folder.mkdir(parents=True, exist_ok=True)
 
     unique_keys = args.unique_keys.split(',')
-    all_bib_bytes = []
-
+    
+    # Prepare parameter tuples for multiprocessing workers
+    tasks = []
     for index, row in df.iterrows():
         firstname = str(row['firstname'])
         lastname = str(row['lastname'])
-        
-        # Convert to uppercase but retain lowercase sharp s ('ß') instead of converting it to 'SS' or capital 'ẞ'
-        text = lastname.replace('ß', 'ẞ').upper()
-        text = text.replace('ẞ'.upper(), 'ß')
-
-        text = text.replace('-', '-\n').replace(' ', '\n')
-
-        # Check uniqueness across specified keys
         is_unique = df[df[unique_keys].eq(row[unique_keys]).all(axis=1)].shape[0] == 1
+        
         if not is_unique:
-            print("Warning: Duplicate found for", row[unique_keys].to_dict())
-            text = f"{firstname[0].upper()}. {lastname.upper()}"
-            print("Appending first letter of firstname to text:", text)
+            print(f"Warning: Duplicate found for {lastname}, {firstname} across keys: {unique_keys}")
 
-        header_file = str(row['header'])
-        output_file = output_folder / f"{lastname}_{firstname}"
-        
-        print(f"Generating bib for {firstname} {lastname} -> Text: {repr(text)}")
-        image = generate_image(
-            txt=text,
-            header_file=header_file,
-            footer_file=str(footer_path),
-            font_file=str(font_path),
-            margin=args.margin,
-            text_color=args.text_color,
-            stroke_color=args.stroke_color,
-            stroke_width=args.stroke_width
-        )
+        tasks.append((
+            index,
+            firstname,
+            lastname,
+            str(row['header']),
+            str(footer_path),
+            str(font_path),
+            str(output_folder),
+            args.margin,
+            args.text_color,
+            args.stroke_color,
+            args.stroke_width,
+            args.create_duplicate,
+            args.create_pdf,
+            args.combined_pdf,  # We only need bytes in memory if combined_pdf is True
+            is_unique
+        ))
 
-        # We always need the PNG bytes if we are doing individual PDFs or a combined PDF
-        if args.create_pdf or args.combined_pdf:
-            img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format='PNG')
-            img_bytes = img_byte_arr.getvalue()
-            
-            if args.combined_pdf:
-                if args.create_duplicate:
-                    all_bib_bytes.extend([img_bytes, img_bytes])
-                else:
-                    all_bib_bytes.append(img_bytes)
+    all_bib_bytes_map = {}
+    print(f"Processing {len(tasks)} bibs in parallel across multi-core CPU...")
+    
+    # Run the multiprocessing pool
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = {executor.submit(generate_single_bib, *task): task for task in tasks}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                row_idx, img_bytes = future.result()
+                if img_bytes is not None:
+                    all_bib_bytes_map[row_idx] = img_bytes
+            except Exception as e:
+                task_data = futures[future]
+                print(f"Error processing bib for {task_data[1]} {task_data[2]}: {e}", file=sys.stderr)
 
-            if args.create_pdf:
-                letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
-                layout = img2pdf.get_layout_fun(letter)
-                pdf_path = output_file.with_suffix(".pdf")
-                with open(pdf_path, "wb") as f:
-                    images = [img_bytes, img_bytes] if args.create_duplicate else [img_bytes]
-                    f.write(img2pdf.convert(images, layout_fun=layout))
-        
-        # Save individual PNGs
-        if not args.create_pdf or not args.combined_pdf: # Save PNGs unless requested to only generate a combined PDF without them (wait, we always generate PNG files as standard unless only combined PDF is requested, or we can just always save PNGs to output)
-            pass
-        
-        # To match legacy behavior, we always write standard PNGs to the folder
-        if args.create_duplicate:
-            image.save(f"{output_file}_1.png")
-            image.save(f"{output_file}_2.png")
-        else:
-            image.save(f"{output_file}.png")
+    # If combined PDF generation was requested, compile in deterministic row order
+    if args.combined_pdf and all_bib_bytes_map:
+        ordered_bytes = []
+        for idx in sorted(all_bib_bytes_map.keys()):
+            img_bytes = all_bib_bytes_map[idx]
+            if args.create_duplicate:
+                ordered_bytes.extend([img_bytes, img_bytes])
+            else:
+                ordered_bytes.append(img_bytes)
 
-    # If combined PDF generation was requested, compile all accumulated bibs
-    if args.combined_pdf and all_bib_bytes:
         letter = (img2pdf.mm_to_pt(210), img2pdf.mm_to_pt(148))
         layout = img2pdf.get_layout_fun(letter)
         combined_path = output_folder / "combined_bibs.pdf"
-        print(f"Compiling {len(all_bib_bytes)} bib pages into combined PDF: {combined_path}")
+        
+        print(f"Compiling {len(ordered_bytes)} bib pages into combined PDF: {combined_path}")
         try:
             with open(combined_path, "wb") as f:
-                f.write(img2pdf.convert(all_bib_bytes, layout_fun=layout))
+                f.write(img2pdf.convert(ordered_bytes, layout_fun=layout))
         except Exception as e:
             print(f"Error compiling combined PDF: {e}", file=sys.stderr)
+            
+    print("Execution complete. All bib files successfully optimized and saved.")
