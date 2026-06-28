@@ -1,102 +1,99 @@
 from PIL import ImageFont, ImageDraw, Image
 import argparse
-import io
-import re
+import pathlib
 
-def contains_umlaut(s):
-    s = s.lower()
-    pattern = r'[äöüëïíš]'
-    return bool(re.search(pattern, s))
-
-def generate_image(txt, header_file, footer_file, font_file, offset_x=0, offset_y=0):
-    # A5 size
+def generate_image(
+    txt: str,
+    header_file: str,
+    footer_file: str,
+    font_file: str,
+    offset_x: int = 0,
+    offset_y: int = 0
+) -> Image.Image:
+    """
+    Generates a bib image (A5 size, high-res 3508x2480) with a header, footer,
+    and centered text scaled dynamically using binary search to fit the available space.
+    """
+    # A5 size at 300 DPI is approximately 3508 x 2480
     image = Image.new("RGBA", (3508, 2480), "white")
+    
     header = Image.open(header_file).convert("RGBA")
     footer = Image.open(footer_file).convert("RGBA")
     draw = ImageDraw.Draw(image)
-    fontsize = 1  # starting font size
 
     W, H = image.size
 
-    # portion of image width you want text width to be
-    blank_height = image.size[1] - header.size[1] - footer.size[1];
-    blank = Image.new('RGBA', (W - 25, blank_height), "white")
+    # The blank area height available for text between the header and footer
+    blank_height = H - header.size[1] - footer.size[1]
+    blank_width = W - 25  # Apply a 25px horizontal margin
 
-    font = ImageFont.truetype(font_file, fontsize)
+    # Optimize font sizing using Binary Search to find the maximum fitting size.
+    # Set the search ceiling dynamically based on the image size to prevent artificial caps.
+    low = 1
+    high = max(W, H)
+    best_size = 1
 
-    # print("Image size:", image.size)
-    # print("Textarea size:", blank.size)
+    while low <= high:
+        mid = (low + high) // 2
+        try:
+            font = ImageFont.truetype(font_file, mid)
+        except OSError as e:
+            raise OSError(f"Could not load font file '{font_file}': {e}")
+            
+        bbox = draw.multiline_textbbox((0, 0), txt, font=font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
 
-    while (font.getbbox(txt)[2] < blank.size[0]) and (font.getbbox(txt)[3] < blank.size[1]):
-        # iterate until the text size is just larger than the criteria
-        fontsize += 1
-        font = ImageFont.truetype(font_file, fontsize)
+        if w < blank_width and h < blank_height:
+            best_size = mid
+            low = mid + 1
+        else:
+            high = mid - 1
 
-    # optionally de-increment to be sure it is less than criteria
-    fontsize += 0
-    font = ImageFont.truetype(font_file, fontsize)
-   
-    #if(contains_umlaut(txt)):
-    #    print("Contains umlaut")
-    #    offset_y += 70
-    #    fontsize = int(fontsize * 0.8)
-    #    font = ImageFont.truetype(font_file, fontsize)
+    # Load the best font size found
+    font = ImageFont.truetype(font_file, best_size)
+    bbox = draw.multiline_textbbox((0, 0), txt, font=font)
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+
+    # Calculate centered position in the blank area, compensating for internal font offsets
+    x = (W - w) // 2 - bbox[0] + offset_x
+    y = header.size[1] + (blank_height - h) // 2 - bbox[1] + offset_y
+
+    # Draw the multiline text
+    draw.text(
+        (x, y),
+        txt,
+        font=font,
+        fill="black",
+        align="center",
+        stroke_width=1,
+        stroke_fill="black"
+    )
+
+    # Paste header and footer, using their own alpha channels as masks to preserve transparency
+    image.paste(header, (0, 0), mask=header)
+    image.paste(footer, (0, H - footer.size[1]), mask=footer)
     
-
-    _, _, w, h = draw.textbbox((0, 0), txt, font=font)
-    x = (W - w) // 2
-    y = header.size[1] + ((blank_height - h) // 2)
-
-    position = ((W - w) / 2 + offset_x, (H - h) / 2 + offset_y)
-    draw.text(position, txt, font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
-
-    # draw.rectangle([0, 0, blank.size[0] - 1, blank.size[1] - 1], outline="red", width=10)
-
-    # draw rectanble around text area with blank size
-    # draw.rectangle([0, header.size[1], W - 1, H - footer.size[1] - 1], outline="red", width=10)
-
-    # draw.text((2100, 442), "150", font=font, fill="black", align="center", stroke_width=1, stroke_fill="black")
-
-    # draw text on top right of text area
-
-    image.paste(header, (0, 0))
-    image.paste(footer, (0, image.size[1] - footer.size[1]))
-    
-    white_bg = Image.new("RGBA", image.size, "white")
-    white_bg.paste(image, (0, 0), image)
-    image = white_bg.convert("RGB")
-
-    img_byte_arr=io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr=img_byte_arr.getvalue()
-    return img_byte_arr
+    # Convert RGBA to RGB for standard image saving
+    return image.convert("RGB")
 
 
+def main(txt: str, output_file: str, header_file: str, footer_file: str, font_file: str) -> None:        
+    image = generate_image(txt, header_file, footer_file, font_file)
+    output_path = pathlib.Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(output_path)
 
-def main(txt, output_file, header_file, footer_file, font_file):        
-    bytes=generate_image(txt, header_file, footer_file, font_file)
-    image=Image.open(io.BytesIO(bytes))
-    image.save(output_file)
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser(
-                    prog='Bib Generator')
-    parser.add_argument(
-        '--text', '-t', help='Text to be printed on bib', required=True)
-    parser.add_argument(
-        '--output', '-o', help='Output file name', required=True)
-    parser.add_argument('--header', '-he',
-                        help='Header file name', required=True)
-    parser.add_argument(
-        '--footer', '-f', help='Footer file name', required=True)
+    parser = argparse.ArgumentParser(prog='Bib Generator')
+    parser.add_argument('--text', '-t', help='Text to be printed on bib', required=True)
+    parser.add_argument('--output', '-o', help='Output file name', required=True)
+    parser.add_argument('--header', '-he', help='Header file name', required=True)
+    parser.add_argument('--footer', '-f', help='Footer file name', required=True)
     parser.add_argument('--font', '-F', help='Font file name', required=True)
 
-    args=parser.parse_args()
+    args = parser.parse_args()
 
-    header_file=args.header
-    footer_file=args.footer
-    font_file=args.font
-    txt=args.text
-    output_file=args.output
-
-    main(txt, output_file, header_file, footer_file, font_file)
+    main(args.text, args.output, args.header, args.footer, args.font)
