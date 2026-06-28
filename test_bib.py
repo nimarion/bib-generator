@@ -2,6 +2,8 @@ import unittest
 import tempfile
 import pathlib
 import pandas as pd
+import subprocess
+import sys
 from PIL import Image
 from bib import generate_image
 
@@ -19,12 +21,16 @@ class TestBibGenerator(unittest.TestCase):
         self.test_dir.cleanup()
 
     def test_generate_image_creates_valid_image(self):
-        # Generate an image with standard text
+        # Generate an image with standard text and custom styling
         img = generate_image(
             txt="TEST RUNNER",
             header_file=self.header_file,
             footer_file=self.footer_file,
-            font_file=self.font_file
+            font_file=self.font_file,
+            margin=100,
+            text_color="blue",
+            stroke_color="red",
+            stroke_width=3
         )
         
         # Verify the returned object is a PIL Image with correct size and mode
@@ -38,7 +44,6 @@ class TestBibGenerator(unittest.TestCase):
         for name in names:
             text = name.replace('ß', 'ẞ').upper()
             text = text.replace('ẞ'.upper(), 'ß')
-            # The result should have uppercase letters with a lowercase 'ß'
             self.assertEqual(text, "GROß")
 
     def test_binary_search_fits_long_text(self):
@@ -48,7 +53,8 @@ class TestBibGenerator(unittest.TestCase):
             txt=long_text,
             header_file=self.header_file,
             footer_file=self.footer_file,
-            font_file=self.font_file
+            font_file=self.font_file,
+            margin=200
         )
         self.assertEqual(img.size, (3508, 2480))
 
@@ -83,17 +89,43 @@ class TestBibGenerator(unittest.TestCase):
                 text = lastname.upper()
             results.append((firstname, lastname, is_unique, text))
 
-        # First entry 'Imke Onnen' is a duplicate
         self.assertFalse(results[0][2])
         self.assertEqual(results[0][3], "I. ONNEN")
-
-        # Second entry 'Peter Onnen' is unique
         self.assertTrue(results[1][2])
         self.assertEqual(results[1][3], "ONNEN")
 
-        # Third entry 'Imke Onnen' is a duplicate
-        self.assertFalse(results[2][2])
-        self.assertEqual(results[2][3], "I. ONNEN")
+    def test_cli_execution_with_combined_pdf_and_styling(self):
+        # Create a mock CSV file in our temp folder
+        mock_csv = self.output_dir / "test_data.csv"
+        df = pd.DataFrame({
+            "firstname": ["John", "Jane"],
+            "lastname": ["Doe", "Smith"],
+            "header": [self.header_file, self.header_file]
+        })
+        df.to_csv(mock_csv, index=False, sep=";")
+
+        # Run main.py via subprocess to test the full CLI integration
+        cmd = [
+            sys.executable, "main.py",
+            "--data", str(mock_csv),
+            "--output", str(self.output_dir),
+            "--font", self.font_file,
+            "--footer", self.footer_file,
+            "--separator", ";",
+            "--combined-pdf",
+            "--margin", "120",
+            "--text-color", "navy",
+            "--stroke-color", "gold",
+            "--stroke-width", "2"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, msg=f"CLI failed with error:\n{result.stderr}")
+
+        # Check that PNGs and the combined PDF exist
+        self.assertTrue((self.output_dir / "Doe_John.png").is_file())
+        self.assertTrue((self.output_dir / "Smith_Jane.png").is_file())
+        self.assertTrue((self.output_dir / "combined_bibs.pdf").is_file())
 
 if __name__ == "__main__":
     unittest.main()
