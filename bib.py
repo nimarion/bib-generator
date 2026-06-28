@@ -140,7 +140,7 @@ def main(
     image.save(output_path, optimize=True)
 
 
-if __name__ == "__main__":
+def cli_main() -> None:
     parser = argparse.ArgumentParser(prog='Bib Generator')
     parser.add_argument('--text', '-t', help='Text to be printed on bib', required=True)
     parser.add_argument('--output', '-o', help='Output file name', required=True)
@@ -165,3 +165,7 @@ if __name__ == "__main__":
         stroke_color=args.stroke_color,
         stroke_width=args.stroke_width
     )
+
+
+if __name__ == "__main__":
+    cli_main()

@@ -81,7 +81,7 @@ def generate_single_bib(
     return row_idx, img_bytes
 
 
-if __name__ == "__main__":
+def cli_main() -> None:
     parser = argparse.ArgumentParser(prog='Bib Generator')
     
     parser.add_argument(
@@ -259,3 +259,7 @@ if __name__ == "__main__":
             print(f"Error compiling combined PDF: {e}", file=sys.stderr)
             
     print("Execution complete. All bib files successfully optimized and saved.")
+
+
+if __name__ == "__main__":
+    cli_main()
