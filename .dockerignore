@@ -1,0 +1,26 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Ignore local configs and virtual envs
+.git/
+.gitignore
+.github/
+
+# Ignore example dataset and mock templates
+example/
+test_bib.py
+
+# Ignore frontend build files
+frontend/
+node_modules/
+dist/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db

@@ -1,6 +1,8 @@
 import unittest
 import tempfile
 import pathlib
+import io
+import json
 import pandas as pd
 import subprocess
 import sys
@@ -245,6 +247,83 @@ class TestBibGenerator(unittest.TestCase):
             content = f.read()
             page_count = content.count(b"/Type /Page") - content.count(b"/Type /Pages")
             self.assertEqual(page_count, 6, "Combined duplex PDF must contain exactly 6 pages (3 front, 3 back).")
+
+    def test_http_kiosk_server_live_execution(self):
+        import urllib.request
+        import time
+        
+        test_port = 8089
+        cmd = [
+            sys.executable, "main.py",
+            "--server",
+            "--port", str(test_port),
+            "--host", "127.0.0.1",
+            "--font", self.font_file,
+            "--header", self.header_file,
+            "--footer", self.footer_file
+        ]
+        
+        # Start server background process
+        server_proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1.0) # wait for server boot
+        
+        try:
+            # 1. Query standard GET /generate endpoint
+            url = f"http://127.0.0.1:{test_port}/generate?text=BOLT&size=A6"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "image/png")
+                img_data = response.read()
+                img = Image.open(io.BytesIO(img_data))
+                self.assertEqual(img.size, PRESETS["A6"])
+                self.assertEqual(img.mode, "RGB")
+                
+            # 2. Query GET /assets endpoint
+            assets_url = f"http://127.0.0.1:{test_port}/assets"
+            with urllib.request.urlopen(assets_url) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "application/json")
+                assets_data = json.loads(response.read().decode("utf-8"))
+                
+                # Check required structural elements
+                self.assertIn("fonts", assets_data)
+                self.assertIn("headers", assets_data)
+                self.assertIn("footers", assets_data)
+                self.assertIn("presets", assets_data)
+                self.assertTrue(len(assets_data["presets"]) > 0)
+
+            # 3. Query POST /generate-batch endpoint with multiple runners
+            batch_url = f"http://127.0.0.1:{test_port}/generate-batch?size=A5"
+            runners_payload = [
+                {"firstname": "Usain", "lastname": "Bolt", "header": self.header_file, "footer": self.footer_file},
+                {"firstname": "Shelly-Ann", "lastname": "Fraser", "header": self.header_file, "footer": self.footer_file}
+            ]
+            
+            post_bytes = json.dumps(runners_payload).encode("utf-8")
+            post_req = urllib.request.Request(
+                batch_url,
+                data=post_bytes,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            with urllib.request.urlopen(post_req) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers["Content-Type"], "application/pdf")
+                
+                # Count PDF pages directly using zero-dependency binary search
+                pdf_data = response.read()
+                page_count = pdf_data.count(b"/Type /Page") - pdf_data.count(b"/Type /Pages")
+                self.assertEqual(page_count, 2, "Batch PDF must contain exactly 2 pages (1 per runner).")
+
+            # 4. Query GET /health endpoint
+            health_url = f"http://127.0.0.1:{test_port}/health"
+            with urllib.request.urlopen(health_url) as response:
+                self.assertEqual(response.status, 200)
+                
+        finally:
+            server_proc.terminate()
+            server_proc.wait()
 
 if __name__ == "__main__":
     unittest.main()

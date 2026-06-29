@@ -7,116 +7,18 @@ import re
 import img2pdf
 import concurrent.futures
 from PIL import Image
-from bib import PRESETS
 
-
-def generate_single_bib(
-    row_idx: int,
-    firstname: str,
-    lastname: str,
-    header_file: str,
-    footer_file: str,
-    font_file: str,
-    output_folder: str,
-    margin: int,
-    text_color: str,
-    stroke_color: str,
-    stroke_width: int,
-    create_duplicate: bool,
-    create_pdf: bool,
-    need_bytes: bool,
-    is_unique: bool,
-    width: int,
-    height: int,
-    back_bytes: bytes | None
-) -> tuple[int, bytes | None]:
-    """
-    Worker function executed in parallel to process a single bib row.
-    Generates the high-res image, saves the PNG(s) with lossless optimization,
-    saves the individual PDF if requested (supporting Duplex alternating pages if back_bytes is provided),
-    and returns bytes if needed for a combined PDF.
-    """
-    import io
-    import pathlib
-    import img2pdf
-    from bib import generate_image
-    
-    # Convert to uppercase but retain lowercase sharp s ('ß') instead of converting to 'SS'
-    text = lastname.replace('ß', 'ẞ').upper()
-    text = text.replace('ẞ'.upper(), 'ß')
-    text = text.replace('-', '-\n').replace(' ', '\n')
-
-    if firstname and not is_unique:
-        text = f"{firstname[0].upper()}. {lastname.upper()}"
-
-    output_path = pathlib.Path(output_folder)
-    
-    # Avoid trailing underscore if firstname is empty (e.g., in sequential number generation)
-    if firstname:
-        output_file = output_path / f"{lastname}_{firstname}"
-    else:
-        output_file = output_path / f"{lastname}"
-    
-    # Generate the image using our core layout engine
-    image = generate_image(
-        txt=text,
-        header_file=header_file,
-        footer_file=footer_file,
-        font_file=font_file,
-        margin=margin,
-        text_color=text_color,
-        stroke_color=stroke_color,
-        stroke_width=stroke_width,
-        width=width,
-        height=height
-    )
-
-    # Always save high-quality optimized PNG(s)
-    if create_duplicate:
-        image.save(f"{output_file}_1.png", optimize=True)
-        image.save(f"{output_file}_2.png", optimize=True)
-    else:
-        image.save(f"{output_file}.png", optimize=True)
-
-    img_bytes = None
-    if need_bytes or create_pdf:
-        # Convert image to PNG bytes for PDF generation
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG', optimize=True)
-        img_bytes = img_byte_arr.getvalue()
-        
-        if create_pdf:
-            # Sizing for pdf dimensions dynamically scaled
-            pdf_w_pt = img2pdf.mm_to_pt(int(width * (210 / 3508))) if width else img2pdf.mm_to_pt(210)
-            pdf_h_pt = img2pdf.mm_to_pt(int(height * (148 / 2480))) if height else img2pdf.mm_to_pt(148)
-            letter = (pdf_w_pt, pdf_h_pt)
-            layout = img2pdf.get_layout_fun(letter)
-            
-            pdf_path = output_file.with_suffix(".pdf")
-            
-            # Construct pages (supporting duplex printing with alternating back-side pages)
-            pdf_pages = []
-            if create_duplicate:
-                if back_bytes:
-                    pdf_pages.extend([img_bytes, back_bytes, img_bytes, back_bytes])
-                else:
-                    pdf_pages.extend([img_bytes, img_bytes])
-            else:
-                pdf_pages.append(img_bytes)
-                if back_bytes:
-                    pdf_pages.append(back_bytes)
-                    
-            with open(pdf_path, "wb") as f:
-                f.write(img2pdf.convert(pdf_pages, layout_fun=layout))
-                
-    return row_idx, img_bytes
+# Import decoupled dynamic scaling engine and server
+from bib import generate_image, PRESETS
+from utils import generate_single_bib
+from server import run_server
 
 
 def cli_main() -> None:
     parser = argparse.ArgumentParser(prog='Bib Generator')
     
     parser.add_argument(
-        '--data', '-d', help='CSV or Excel (.xlsx/.xls) file name (optional if using --sequence)', required=False)
+        '--data', '-d', help='CSV or Excel (.xlsx/.xls) file name (optional if using --sequence or --server)', required=False)
     
     parser.add_argument(
         '--sequence', '-S', help='Generic sequential number range (e.g. "1-500" or "10,20,30")', required=False)
@@ -130,10 +32,10 @@ def cli_main() -> None:
         dest='separator', help='CSV separator character', default=',', required=False)
     
     parser.add_argument(
-        '--output', '-o', help='Output folder', required=True)
+        '--output', '-o', help='Output folder (required unless --server is active)', required=False)
     
     parser.add_argument(
-        '--font', '-F', help='Font file name', required=True)
+        '--font', '-F', help='Font file name (optional if provided in spreadsheet)', required=False)
     
     # Support both proper -f and legacy -he options for footer
     parser.add_argument(
@@ -193,19 +95,38 @@ def cli_main() -> None:
         help='Optional path to template image for the back side of bibs (for duplex double-sided printing)',
         required=False)
 
+    # REST API Kiosk Server Option
+    parser.add_argument(
+        '--server', '-Srv',
+        help='Run the application as a real-time HTTP REST API server',
+        default=False, required=False, action='store_true')
+        
+    parser.add_argument(
+        '--port', type=int,
+        help='Port to run the HTTP server on', default=8080, required=False)
+
+    parser.add_argument(
+        '--host', type=str,
+        help='Host to bind the HTTP server to', default='localhost', required=False)
+
     args = parser.parse_args()
 
     # Pre-execution Validation
-    font_path = pathlib.Path(args.font)
-    output_folder = pathlib.Path(args.output)
+    font_path = pathlib.Path(args.font) if args.font else None
+    output_folder = pathlib.Path(args.output) if args.output else None
 
-    # 1. Ensure at least one data source is supplied
-    if not args.data and not args.sequence:
-        print("Error: Either --data (spreadsheet) or --sequence (number range) must be provided.", file=sys.stderr)
+    # 1. Ensure at least one execution mode is selected
+    if not args.data and not args.sequence and not args.server:
+        print("Error: Please provide an execution mode: --data (spreadsheet), --sequence (number range), or --server (HTTP server).", file=sys.stderr)
         sys.exit(1)
 
-    # 2. Validate font file
-    if not font_path.is_file():
+    # 2. Require --output folder unless we are running in Server-Only mode
+    if not args.output and not args.server:
+        print("Error: --output (-o) directory is required for bulk processing modes.", file=sys.stderr)
+        sys.exit(1)
+
+    # 3. Validate font file (only if globally supplied via CLI)
+    if font_path and not font_path.is_file():
         print(f"Error: Font file '{font_path}' does not exist.", file=sys.stderr)
         sys.exit(1)
 
@@ -233,8 +154,17 @@ def cli_main() -> None:
             print(f"Error pre-processing back-side image: {e}", file=sys.stderr)
             sys.exit(1)
 
+    # Mode A: Real-Time HTTP Kiosk Server Mode
+    if args.server:
+        run_server(args, font_path, back_bytes)
+        return
+
     # Data Loader Phase: Parse CSV, Excel, or build synthetic sequence
     if args.sequence:
+        if not font_path:
+            print("Error: --font (-F) is required when generating generic sequential numbers.", file=sys.stderr)
+            sys.exit(1)
+
         if not args.header:
             print("Error: --header (-H) logo is required when generating generic sequential numbers.", file=sys.stderr)
             sys.exit(1)
@@ -270,7 +200,8 @@ def cli_main() -> None:
                 "firstname": "",
                 "lastname": str(num),
                 "header": str(header_path),
-                "footer": str(footer_path)
+                "footer": str(footer_path),
+                "font": str(font_path)
             })
         df = pd.DataFrame(data_list)
     else:
@@ -300,6 +231,12 @@ def cli_main() -> None:
             print(f"Error: Dataset is missing required columns: {', '.join(missing_cols)}", file=sys.stderr)
             sys.exit(1)
 
+        # Validate that we have font files either globally or per-row
+        has_font_col = 'font' in df.columns
+        if not has_font_col and not args.font:
+            print("Error: Font file is required (either as a 'font' column in the data file or globally via --font/-F).", file=sys.stderr)
+            sys.exit(1)
+
         # Validate that we have header logos either globally or per-row
         has_header_col = 'header' in df.columns
         if not has_header_col and not args.header:
@@ -313,13 +250,19 @@ def cli_main() -> None:
             sys.exit(1)
 
         # Pre-flight asset existence validations
+        unique_fonts = df['font'].dropna().unique() if has_font_col else ([args.font] if args.font else [])
         unique_headers = df['header'].dropna().unique() if has_header_col else ([args.header] if args.header else [])
         unique_footers = df['footer'].dropna().unique() if has_footer_col else ([args.footer] if args.footer else [])
 
+        missing_fonts = [f for f in unique_fonts if not pathlib.Path(f).is_file()]
         missing_headers = [h for h in unique_headers if not pathlib.Path(h).is_file()]
-        missing_footers = [f for f in unique_footers if not pathlib.Path(f).is_file()]
+        missing_footers = [fo for fo in unique_footers if not pathlib.Path(fo).is_file()]
 
-        if missing_headers or missing_footers:
+        if missing_fonts or missing_headers or missing_footers:
+            if missing_fonts:
+                print("Error: The following referenced font files were not found:", file=sys.stderr)
+                for m in missing_fonts:
+                    print(f"  - {m}", file=sys.stderr)
             if missing_headers:
                 print("Error: The following referenced header files were not found:", file=sys.stderr)
                 for m in missing_headers:
@@ -341,7 +284,8 @@ def cli_main() -> None:
         firstname = str(row['firstname']) if pd.notna(row['firstname']) else ""
         lastname = str(row['lastname'])
         
-        # Determine header and footer for this row (supporting spreadsheet column or global fallback)
+        # Determine assets for this row (supporting spreadsheet column or global fallback)
+        row_font = str(row['font']) if 'font' in df.columns and pd.notna(row['font']) else str(font_path)
         row_header = str(row['header']) if 'header' in df.columns and pd.notna(row['header']) else str(args.header)
         row_footer = str(row['footer']) if 'footer' in df.columns and pd.notna(row['footer']) else str(args.footer)
 
@@ -358,7 +302,7 @@ def cli_main() -> None:
             lastname,
             row_header,
             row_footer,
-            str(font_path),
+            row_font,
             str(output_folder),
             args.margin,
             args.text_color,
