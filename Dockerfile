@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py bib.py server.py utils.py ./
 COPY header/ ./header/
 COPY footer/ ./footer/
+COPY example/ ./example/
 
 # Expose port 8080 to permit inbound network connections
 EXPOSE 8080

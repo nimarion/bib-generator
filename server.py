@@ -86,9 +86,17 @@ class BibServerHandler(BaseHTTPRequestHandler):
         text = text.replace('ẞ'.upper(), 'ß')
         text = text.replace('-', '-\n').replace(' ', '\n')
 
-        row_header = runner.get("header") or self.args.header
-        row_footer = runner.get("footer") or self.args.footer
+        row_header = runner.get("header") or (self.args.header if self.args else None)
+        row_footer = runner.get("footer") or (self.args.footer if self.args else None)
         row_font = runner.get("font") or (str(self.font_path) if self.font_path else None)
+
+        discovered = self.discover_assets()
+        if (not row_font or not pathlib.Path(row_font).is_file()) and discovered.get("fonts"):
+            row_font = discovered["fonts"][0]
+        if (not row_header or not pathlib.Path(row_header).is_file()) and discovered.get("headers"):
+            row_header = discovered["headers"][0]
+        if (not row_footer or not pathlib.Path(row_footer).is_file()) and discovered.get("footers"):
+            row_footer = discovered["footers"][0]
 
         if not row_header or not pathlib.Path(row_header).is_file():
             return None, f"Header file '{row_header}' for runner at index {idx} not found."
@@ -114,13 +122,13 @@ class BibServerHandler(BaseHTTPRequestHandler):
     def extract_render_opts(self, parsed_url) -> dict:
         """Parses common query string options for canvas dimensions and styling."""
         query_params = urllib.parse.parse_qs(parsed_url.query)
-        margin = int(query_params.get("margin", [self.args.margin])[0])
-        text_color = query_params.get("text_color", [self.args.text_color])[0]
-        stroke_color = query_params.get("stroke_color", [self.args.stroke_color])[0]
-        stroke_width = int(query_params.get("stroke_width", [self.args.stroke_width])[0])
+        margin = int(query_params.get("margin", [self.args.margin if self.args else 175])[0])
+        text_color = query_params.get("text_color", [self.args.text_color if self.args else "black"])[0]
+        stroke_color = query_params.get("stroke_color", [self.args.stroke_color if self.args else "black"])[0]
+        stroke_width = int(query_params.get("stroke_width", [self.args.stroke_width if self.args else 1])[0])
         jpeg_quality = int(query_params.get("quality", [85])[0])
 
-        size_preset = query_params.get("size", [self.args.size])[0]
+        size_preset = query_params.get("size", [self.args.size if self.args else "A5"])[0]
         custom_w = query_params.get("width", [None])[0]
         custom_h = query_params.get("height", [None])[0]
 
@@ -174,9 +182,17 @@ class BibServerHandler(BaseHTTPRequestHandler):
                 txt = query_params.get("text", ["SAMPLE"])[0]
                 opts = self.extract_render_opts(parsed_url)
                 
-                header_file = query_params.get("header", [self.args.header])[0]
-                footer_file = query_params.get("footer", [self.args.footer])[0]
+                header_file = query_params.get("header", [self.args.header if self.args else None])[0]
+                footer_file = query_params.get("footer", [self.args.footer if self.args else None])[0]
                 row_font = query_params.get("font", [str(self.font_path) if self.font_path else None])[0]
+
+                discovered = self.discover_assets()
+                if (not row_font or not pathlib.Path(row_font).is_file()) and discovered.get("fonts"):
+                    row_font = discovered["fonts"][0]
+                if (not header_file or not pathlib.Path(header_file).is_file()) and discovered.get("headers"):
+                    header_file = discovered["headers"][0]
+                if (not footer_file or not pathlib.Path(footer_file).is_file()) and discovered.get("footers"):
+                    footer_file = discovered["footers"][0]
 
                 if not header_file or not footer_file or not row_font:
                     self.send_error_json("Missing required asset parameter(s)", 400)

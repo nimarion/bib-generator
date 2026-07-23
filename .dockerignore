@@ -12,8 +12,7 @@ ENV/
 .gitignore
 .github/
 
-# Ignore example dataset and mock templates
-example/
+# Ignore test files
 test_bib.py
 
 # Ignore frontend build files
