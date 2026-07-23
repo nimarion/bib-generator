@@ -1,8 +1,7 @@
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import type { Runner } from './types';
-
-export const BACKEND_URL = 'http://localhost:8080';
+export const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string) || 'https://bib-api.pfingstsportfest.de';
 
 export const DEFAULT_FONTS = [
   "example/BebasNeue-Regular.ttf",
