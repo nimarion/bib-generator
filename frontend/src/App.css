@@ -227,27 +227,321 @@
 .batch-container {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   width: 100%;
   height: 100%;
-  padding: 2rem;
+  padding: 1.5rem;
+  overflow-y: auto;
 }
 
 .batch-card {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  padding: 1.5rem;
+  padding: 1.25rem;
   box-shadow: var(--card-shadow);
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.batch-card.flex-1 {
   flex: 1;
+  min-height: 350px;
 }
 
 .batch-card h2 {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 600;
+  color: var(--text-primary);
+}
+
+.batch-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.template-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Secondary & Danger Buttons */
+.btn-secondary {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-tertiary, #334155);
+  border-color: var(--accent-primary);
+}
+
+.btn-secondary.sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.btn-danger {
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--danger-primary, #ef4444);
+  color: var(--danger-primary, #ef4444);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-danger:hover {
+  background-color: var(--danger-primary, #ef4444);
+  color: #ffffff;
+}
+
+.btn-icon-danger {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-icon-danger:hover {
+  color: var(--danger-primary, #ef4444);
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+/* Drag & Drop Import Dropzone */
+.dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-align: center;
+  background-color: var(--bg-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dropzone:hover, .dropzone.active {
+  border-color: var(--accent-primary);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.dropzone-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.dropzone-icon {
+  font-size: 2rem;
+}
+
+.dropzone-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.dropzone-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Import Alert Banner */
+.import-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.import-alert.success {
+  background-color: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+  color: #10b981;
+}
+
+.import-alert.error {
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid var(--danger-primary, #ef4444);
+  color: var(--danger-primary, #ef4444);
+}
+
+.alert-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* View Mode Toolbar */
+.batch-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 0.25rem;
+  background-color: var(--bg-primary);
+  padding: 0.2rem;
+  border-radius: 6px;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn.active {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.table-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Table Wrapper and Runner Table */
+.table-wrapper {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
+  max-height: 400px;
+}
+
+.runner-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.runner-table th {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.runner-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.row-num {
+  text-align: center;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.table-input {
+  width: 100%;
+  background-color: var(--bg-secondary);
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.table-input.bold {
+  font-weight: 600;
+}
+
+.table-input:hover, .table-input:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+  background-color: var(--bg-primary);
+}
+
+.table-select {
+  width: 100%;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.table-select:hover, .table-select:focus {
+  border-color: var(--accent-primary);
+  outline: none;
+  background-color: var(--bg-primary);
+}
+
+/* Compiler Bottom Action Bar */
+.compiler-bottom-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.compiler-options {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.select-input.inline {
+  width: auto;
+  padding: 0.4rem 0.75rem;
 }
 
 .batch-editor {
@@ -260,6 +554,7 @@
   padding: 1rem;
   font-size: 0.9rem;
   resize: none;
+  min-height: 250px;
 }
 
 .batch-editor:focus {
@@ -319,6 +614,107 @@
   box-shadow: 0 0 8px var(--danger-primary);
 }
 
+/* Large Batch Progress Modal Overlay */
+.progress-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+.progress-modal-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 1.75rem;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.progress-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-modal-header h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 12px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.progress-modal-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: monospace;
+  font-size: 0.95rem;
+}
+
+.progress-percent {
+  font-weight: 700;
+  color: #10b981;
+}
+
+.progress-count {
+  color: var(--text-secondary);
+}
+
+.progress-status-text {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background-color: var(--bg-primary);
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.progress-eta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.progress-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 /* Mobile & Tablet Responsiveness */
 @media (max-width: 768px) {
   .app-header {
@@ -357,5 +753,14 @@
   
   .batch-container {
     padding: 1rem;
+  }
+
+  .batch-card-header {
+    flex-direction: column;
+  }
+
+  .compiler-bottom-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }

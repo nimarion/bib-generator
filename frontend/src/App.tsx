@@ -1,43 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import type { Assets, Runner, ExportProgress } from './types';
+import {
+  BACKEND_URL,
+  DEFAULT_RUNNERS,
+  DEFAULT_FONTS,
+  DEFAULT_HEADERS,
+  DEFAULT_FOOTERS,
+  PRESETS
+} from './assetUtils';
+import { Header } from './components/Header';
+import { DesignerSidebar } from './components/DesignerSidebar';
+import { BatchImportCard } from './components/BatchImportCard';
+import { RunnerTable } from './components/RunnerTable';
+import { ProgressModal } from './components/ProgressModal';
 import './App.css';
-
-interface Assets {
-  fonts: string[];
-  headers: string[];
-  footers: string[];
-  presets: string[];
-}
-
-interface Runner {
-  firstname: string;
-  lastname: string;
-  header: string;
-  footer: string;
-}
-
-const BACKEND_URL = 'http://localhost:8080';
-
-const DEFAULT_RUNNERS: Runner[] = [
-  {
-    firstname: "Usain",
-    lastname: "Bolt",
-    header: "example/globus.png",
-    footer: "example/footer.png"
-  },
-  {
-    firstname: "Shelly-Ann",
-    lastname: "Fraser",
-    header: "example/bitburger.png",
-    footer: "example/footer.png"
-  }
-];
-
-const PRESETS: Record<string, [number, number]> = {
-  A4: [4960, 3508],
-  A5: [3508, 2480],
-  A6: [2480, 1748],
-  letter: [3300, 2550]
-};
 
 function App() {
   const [activeTab, setActiveTab] = useState<'preview' | 'batch'>('preview');
@@ -49,7 +25,7 @@ function App() {
     presets: []
   });
 
-  // Preview form options
+  // Designer form state
   const [text, setText] = useState<string>('BOLT');
   const [margin, setMargin] = useState<number>(175);
   const [textColor, setTextColor] = useState<string>('#000000');
@@ -60,16 +36,29 @@ function App() {
   const [selectedFooter, setSelectedFooter] = useState<string>('');
   const [selectedSize, setSelectedSize] = useState<string>('A5');
   
-  // Custom sizing states
+  // Custom dimensions state
   const [customWidth, setCustomWidth] = useState<string>('');
   const [customHeight, setCustomHeight] = useState<string>('');
 
   // Batch states
+  const [runners, setRunners] = useState<Runner[]>(DEFAULT_RUNNERS);
   const [batchJson, setBatchJson] = useState<string>(JSON.stringify(DEFAULT_RUNNERS, null, 2));
-  const [batchGenerating, setBatchGenerating] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  
+  // Progress modal & cancellation controller
+  const [exportProgress, setExportProgress] = useState<ExportProgress>({
+    active: false,
+    current: 0,
+    total: 0,
+    percent: 0,
+    statusText: '',
+    startTime: 0,
+    etaSeconds: null
+  });
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Fetch discoverable assets and verify server status on mount
+  // Fetch discoverable assets on mount
   useEffect(() => {
     const fetchAssets = async () => {
       try {
@@ -79,7 +68,6 @@ function App() {
           setAssets(data);
           setServerOnline(true);
           
-          // Set initial option selections
           if (data.fonts.length > 0) setSelectedFont(data.fonts[0]);
           if (data.headers.length > 0) setSelectedHeader(data.headers[0]);
           if (data.footers.length > 0) setSelectedFooter(data.footers[0]);
@@ -93,16 +81,12 @@ function App() {
     fetchAssets();
   }, []);
 
-  // Poll server health status periodically
+  // Poll server health
   useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch(`${BACKEND_URL}/health`);
-        if (res.ok) {
-          setServerOnline(true);
-        } else {
-          setServerOnline(false);
-        }
+        setServerOnline(res.ok);
       } catch {
         setServerOnline(false);
       }
@@ -111,7 +95,54 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Construct the real-time dynamic GET preview image URL
+  const updateRunners = (newRunners: Runner[]) => {
+    setRunners(newRunners);
+    setBatchJson(JSON.stringify(newRunners, null, 2));
+  };
+
+  const handleJsonChange = (jsonStr: string) => {
+    setBatchJson(jsonStr);
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        setRunners(parsed);
+      }
+    } catch {
+      // Allow temporary unparsed JSON editing without state disruption
+    }
+  };
+
+  const handleRunnerChange = (index: number, field: keyof Runner, value: string) => {
+    const updated = [...runners];
+    updated[index] = { ...updated[index], [field]: value };
+    updateRunners(updated);
+  };
+
+  const handleAddRunner = () => {
+    const newRunner: Runner = {
+      firstname: '',
+      lastname: 'New Runner',
+      font: selectedFont || (assets.fonts[0] || DEFAULT_FONTS[0]),
+      header: selectedHeader || (assets.headers[0] || DEFAULT_HEADERS[0]),
+      footer: selectedFooter || (assets.footers[0] || DEFAULT_FOOTERS[0])
+    };
+    updateRunners([...runners, newRunner]);
+  };
+
+  const handleDeleteRunner = (index: number) => {
+    updateRunners(runners.filter((_, i) => i !== index));
+  };
+
+  const handleApplyGlobalAssets = () => {
+    const updated = runners.map(r => ({
+      ...r,
+      font: selectedFont || r.font,
+      header: selectedHeader || r.header,
+      footer: selectedFooter || r.footer
+    }));
+    updateRunners(updated);
+  };
+
   const getPreviewUrl = () => {
     const params = new URLSearchParams({
       text: text,
@@ -130,239 +161,199 @@ function App() {
       params.append('height', customHeight);
     }
     
-    // Cache-buster query param ensures instant redraw updates
     params.append('_cb', Date.now().toString());
-
     return `${BACKEND_URL}/generate?${params.toString()}`;
   };
 
-  // Trigger POST /generate-batch and handle blob download of combined PDF
+  const handleCancelExport = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setExportProgress({
+      active: false,
+      current: 0,
+      total: 0,
+      percent: 0,
+      statusText: '',
+      startTime: 0,
+      etaSeconds: null
+    });
+  };
+
+  // Trigger POST /generate-batch-stream to receive real-time server rendering events
   const handleBatchSubmit = async () => {
+    let parsedRunners: Runner[] = [];
     try {
-      setBatchGenerating(true);
-      const parsedRunners = JSON.parse(batchJson);
-      
-      const res = await fetch(`${BACKEND_URL}/generate-batch?size=${selectedSize}`, {
+      parsedRunners = JSON.parse(batchJson);
+    } catch {
+      alert("Invalid JSON data. Please fix formatting errors.");
+      return;
+    }
+
+    const totalRunners = parsedRunners.length;
+    if (totalRunners === 0) {
+      alert("No entrants to compile.");
+      return;
+    }
+
+    const startTime = Date.now();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    setExportProgress({
+      active: true,
+      current: 0,
+      total: totalRunners,
+      percent: 0,
+      statusText: `Connecting to backend renderer for ${totalRunners} entrant(s)...`,
+      startTime: startTime,
+      etaSeconds: null
+    });
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/generate-batch-stream?size=${selectedSize}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(parsedRunners)
+        body: JSON.stringify(parsedRunners),
+        signal: abortController.signal
       });
 
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to generate batch PDF');
+      if (!response.ok || !response.body) {
+        throw new Error(`Server returned HTTP ${response.status}`);
       }
 
-      // Convert response into file download
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'combined_bibs.pdf';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const jsonStr = trimmed.slice(6);
+            try {
+              const eventData = JSON.parse(jsonStr);
+
+              if (eventData.event === 'error') {
+                throw new Error(eventData.error);
+              }
+
+              if (eventData.event === 'progress') {
+                const elapsedSec = (Date.now() - startTime) / 1000;
+                let etaSec: number | null = null;
+                if (eventData.current > 0) {
+                  const rate = eventData.current / elapsedSec;
+                  etaSec = Math.ceil((eventData.total - eventData.current) / rate);
+                }
+
+                setExportProgress({
+                  active: true,
+                  current: eventData.current,
+                  total: eventData.total,
+                  percent: eventData.percent,
+                  statusText: `Server generated page ${eventData.current} of ${eventData.total} ("${eventData.lastname}, ${eventData.firstname}")...`,
+                  startTime: startTime,
+                  etaSeconds: etaSec
+                });
+              }
+
+              if (eventData.event === 'complete') {
+                setExportProgress(prev => ({
+                  ...prev,
+                  percent: 100,
+                  current: eventData.total,
+                  statusText: `Backend compilation complete! Downloading compressed single PDF...`
+                }));
+
+                const binaryStr = atob(eventData.pdf_base64);
+                const bytes = new Uint8Array(binaryStr.length);
+                for (let i = 0; i < binaryStr.length; i++) {
+                  bytes[i] = binaryStr.charCodeAt(i);
+                }
+
+                const blob = new Blob([bytes], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'combined_bibs.pdf';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                setTimeout(() => {
+                  setExportProgress(prev => ({ ...prev, active: false }));
+                }, 1500);
+              }
+            } catch (parseErr: any) {
+              if (parseErr.message && !parseErr.message.includes('JSON')) {
+                throw parseErr;
+              }
+            }
+          }
+        }
+      }
+
     } catch (err: any) {
-      alert(`Batch PDF compilation error:\n${err.message}`);
-    } finally {
-      setBatchGenerating(false);
+      if (err.name === 'AbortError' || err.message?.includes('cancelled')) {
+        console.log("Batch export cancelled.");
+      } else {
+        alert(`Batch compilation error:\n${err.message}`);
+      }
+      setExportProgress(prev => ({ ...prev, active: false }));
     }
   };
 
   return (
     <div className="app-container">
-      {/* Header bar */}
-      <header className="app-header">
-        <div className="brand-section">
-          <h1>Bib Kiosk Dashboard</h1>
-          <p>Real-time event bib and badge layout engine</p>
-        </div>
-        
-        {/* Navigation Mode Tabs */}
-        <div className="nav-tabs">
-          <button 
-            className={`tab-btn ${activeTab === 'preview' ? 'active' : ''}`}
-            onClick={() => setActiveTab('preview')}
-          >
-            Real-Time Designer
-          </button>
-          <button 
-            className={`tab-btn ${activeTab === 'batch' ? 'active' : ''}`}
-            onClick={() => setActiveTab('batch')}
-          >
-            Batch PDF Compiler
-          </button>
-        </div>
+      {/* Header banner component */}
+      <Header 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        serverOnline={serverOnline} 
+      />
 
-        {/* Server Status Indicator */}
-        <div className="status-indicator">
-          <span className={`status-dot ${serverOnline ? 'online' : 'offline'}`} />
-          {serverOnline ? 'Kiosk Server Online' : 'Kiosk Server Offline'}
-        </div>
-      </header>
-
-      {/* Main dashboard viewport */}
+      {/* Main viewport */}
       <main className="dashboard-body">
         {activeTab === 'preview' ? (
           <>
             {/* Sidebar Controls Panel */}
-            <aside className="sidebar">
-              {/* Text Input */}
-              <div className="control-group">
-                <label>Runner Text (Number / Name)</label>
-                <input 
-                  type="text" 
-                  className="input-text" 
-                  value={text} 
-                  onChange={(e) => setText(e.target.value)} 
-                  placeholder="Enter text..."
-                />
-              </div>
+            <DesignerSidebar 
+              text={text}
+              setText={setText}
+              selectedSize={selectedSize}
+              setSelectedSize={setSelectedSize}
+              customWidth={customWidth}
+              setCustomWidth={setCustomWidth}
+              customHeight={customHeight}
+              setCustomHeight={setCustomHeight}
+              selectedFont={selectedFont}
+              setSelectedFont={setSelectedFont}
+              selectedHeader={selectedHeader}
+              setSelectedHeader={setSelectedHeader}
+              selectedFooter={selectedFooter}
+              setSelectedFooter={setSelectedFooter}
+              textColor={textColor}
+              setTextColor={setTextColor}
+              strokeColor={strokeColor}
+              setStrokeColor={setStrokeColor}
+              margin={margin}
+              setMargin={setMargin}
+              strokeWidth={strokeWidth}
+              setStrokeWidth={setStrokeWidth}
+              assets={assets}
+            />
 
-              {/* Layout Size Selector */}
-              <div className="control-group">
-                <label>Canvas Size Template</label>
-                <select 
-                  className="select-input"
-                  value={selectedSize}
-                  onChange={(e) => setSelectedSize(e.target.value)}
-                >
-                  {assets.presets.map((preset) => (
-                    <option key={preset} value={preset}>{preset} landscape (300 DPI)</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Custom Canvas Sizing Option */}
-              <div className="control-row">
-                <div className="control-group">
-                  <label>Custom Width (px)</label>
-                  <input 
-                    type="number" 
-                    className="input-text" 
-                    value={customWidth} 
-                    onChange={(e) => setCustomWidth(e.target.value)} 
-                    placeholder="Width"
-                  />
-                </div>
-                <div className="control-group">
-                  <label>Custom Height (px)</label>
-                  <input 
-                    type="number" 
-                    className="input-text" 
-                    value={customHeight} 
-                    onChange={(e) => setCustomHeight(e.target.value)} 
-                    placeholder="Height"
-                  />
-                </div>
-              </div>
-
-              {/* Font Selector */}
-              <div className="control-group">
-                <label>Typography Font</label>
-                <select 
-                  className="select-input"
-                  value={selectedFont}
-                  onChange={(e) => setSelectedFont(e.target.value)}
-                >
-                  {assets.fonts.map((f) => {
-                    const basename = f.split('/').pop() || f;
-                    return <option key={f} value={f}>{basename}</option>;
-                  })}
-                </select>
-              </div>
-
-              {/* Header Selector */}
-              <div className="control-group">
-                <label>Header Sponsor Logo</label>
-                <select 
-                  className="select-input"
-                  value={selectedHeader}
-                  onChange={(e) => setSelectedHeader(e.target.value)}
-                >
-                  {assets.headers.map((h) => {
-                    const basename = h.split('/').pop() || h;
-                    return <option key={h} value={h}>{basename}</option>;
-                  })}
-                </select>
-              </div>
-
-              {/* Footer Selector */}
-              <div className="control-group">
-                <label>Footer Event Template</label>
-                <select 
-                  className="select-input"
-                  value={selectedFooter}
-                  onChange={(e) => setSelectedFooter(e.target.value)}
-                >
-                  {assets.footers.map((f) => {
-                    const basename = f.split('/').pop() || f;
-                    return <option key={f} value={f}>{basename}</option>;
-                  })}
-                </select>
-              </div>
-
-              {/* Color Styling Customizations */}
-              <div className="control-row">
-                <div className="control-group">
-                  <label>Text Color</label>
-                  <div className="color-picker-wrapper">
-                    <input 
-                      type="color" 
-                      className="input-color" 
-                      value={textColor} 
-                      onChange={(e) => setTextColor(e.target.value)}
-                    />
-                    <span className="color-hex">{textColor}</span>
-                  </div>
-                </div>
-                <div className="control-group">
-                  <label>Outline Color</label>
-                  <div className="color-picker-wrapper">
-                    <input 
-                      type="color" 
-                      className="input-color" 
-                      value={strokeColor} 
-                      onChange={(e) => setStrokeColor(e.target.value)}
-                    />
-                    <span className="color-hex">{strokeColor}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Layout Spacing Sliders */}
-              <div className="control-row">
-                <div className="control-group">
-                  <label>Text Margin: {margin}px</label>
-                  <input 
-                    type="range" 
-                    min="25" 
-                    max="500" 
-                    step="5"
-                    className="input-range"
-                    value={margin}
-                    onChange={(e) => setMargin(parseInt(e.target.value))}
-                  />
-                </div>
-                <div className="control-group">
-                  <label>Outline Width: {strokeWidth}px</label>
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="15" 
-                    step="1"
-                    className="input-range"
-                    value={strokeWidth}
-                    onChange={(e) => setStrokeWidth(parseInt(e.target.value))}
-                  />
-                </div>
-              </div>
-            </aside>
-
-            {/* Right-Side Live Preview Canvas */}
+            {/* Live Preview Canvas */}
             <section className="preview-container">
               {serverOnline ? (
                 <div className="preview-wrapper">
@@ -388,43 +379,103 @@ function App() {
                   <h3 style={{ color: 'var(--danger-primary)', marginBottom: '0.5rem' }}>Server Unreachable</h3>
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Please start your python kiosk server to enable the real-time layout canvas:</p>
                   <code style={{ background: 'var(--bg-primary)', padding: '0.5rem 1rem', borderRadius: '4px', margin: '1rem 0', fontFamily: 'monospace' }}>
-                    bib-generator --server
+                    python3 server.py
                   </code>
                 </div>
               )}
             </section>
           </>
         ) : (
-          /* Batch JSON Compiler Mode */
+          /* Batch JSON / CSV / XLSX Compiler Mode */
           <section className="batch-container">
-            <div className="batch-card">
-              <h2>Dynamic Batch JSON Compiler</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Define a JSON array of event entrants. Clicking generate compiles high-quality, lossless optimized bibs for all runners in parallel on your multi-core CPU, packing the results into a single download-ready PDF document.
-              </p>
-              
-              <textarea 
-                className="batch-editor"
-                value={batchJson}
-                onChange={(e) => setBatchJson(e.target.value)}
-              />
+            {/* CSV / XLSX Upload Card */}
+            <BatchImportCard 
+              defaultFont={selectedFont || (assets.fonts[0] || DEFAULT_FONTS[0])}
+              defaultHeader={selectedHeader || (assets.headers[0] || DEFAULT_HEADERS[0])}
+              defaultFooter={selectedFooter || (assets.footers[0] || DEFAULT_FOOTERS[0])}
+              onImportSuccess={(newRunners) => updateRunners(newRunners)}
+            />
 
-              <button 
-                className="btn-primary" 
-                onClick={handleBatchSubmit}
-                disabled={batchGenerating || !serverOnline}
-              >
-                {batchGenerating ? (
-                  <>
-                    <div className="spinner" style={{ width: '18px', height: '18px', borderWidth: '2px' }} />
-                    Generating Batch PDF...
-                  </>
-                ) : 'Compile Print-Ready Combined PDF'}
-              </button>
+            {/* Batch Data Editor & Compiler Card */}
+            <div className="batch-card flex-1">
+              <div className="batch-toolbar">
+                <div className="view-mode-toggle">
+                  <button 
+                    className={`mode-btn ${viewMode === 'table' ? 'active' : ''}`}
+                    onClick={() => setViewMode('table')}
+                  >
+                    📋 Interactive Table ({runners.length} Entrants)
+                  </button>
+                  <button 
+                    className={`mode-btn ${viewMode === 'json' ? 'active' : ''}`}
+                    onClick={() => setViewMode('json')}
+                  >
+                    {'{ }'} Raw JSON View
+                  </button>
+                </div>
+
+                {viewMode === 'table' && (
+                  <div className="table-actions">
+                    <button className="btn-secondary sm" onClick={handleAddRunner}>
+                      + Add Entrant
+                    </button>
+                    <button className="btn-secondary sm" onClick={handleApplyGlobalAssets} title="Set font, header, and footer of all rows to current designer selections">
+                      ⚡ Apply Selected Assets to All
+                    </button>
+                    <button className="btn-danger sm" onClick={() => updateRunners([])}>
+                      🗑️ Clear All
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {viewMode === 'table' ? (
+                <RunnerTable 
+                  runners={runners}
+                  assets={assets}
+                  onRunnerChange={handleRunnerChange}
+                  onDeleteRunner={handleDeleteRunner}
+                />
+              ) : (
+                <textarea 
+                  className="batch-editor"
+                  value={batchJson}
+                  onChange={(e) => handleJsonChange(e.target.value)}
+                />
+              )}
+
+              <div className="compiler-bottom-bar">
+                <div className="compiler-options">
+                  <label>Paper Size Preset:</label>
+                  <select 
+                    className="select-input inline"
+                    value={selectedSize}
+                    onChange={(e) => setSelectedSize(e.target.value)}
+                  >
+                    {assets.presets.map((preset) => (
+                      <option key={preset} value={preset}>{preset} landscape</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button 
+                  className="btn-primary" 
+                  onClick={handleBatchSubmit}
+                  disabled={exportProgress.active || !serverOnline || runners.length === 0}
+                >
+                  🚀 Compile Print-Ready Combined PDF ({runners.length} Pages)
+                </button>
+              </div>
             </div>
           </section>
         )}
       </main>
+
+      {/* SSE Progress Overlay Modal */}
+      <ProgressModal 
+        progress={exportProgress}
+        onCancel={handleCancelExport}
+      />
     </div>
   );
 }
